@@ -1,0 +1,28 @@
+{
+  "name": "extra-water",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js"
+  },
+  "author": "Chui Hin Wah Dickson",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vicksonzero/extra-water.git"
+  },
+  "homepage": "http://dickson.md/extra-water/",
+  "bugs": {
+    "url": "https://github.com/vicksonzero/extra-water/issues"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.14.0",
+    "phaser": "^3.17.0",
+    "rand-token": "^0.2.1",
+    "signals": "^1.0.0",
+    "socket.io": "^1.4.8",
+    "socket.io-client": "^1.4.8"
+  }
+}
