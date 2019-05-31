@@ -71,27 +71,114 @@ $(function () {
     /* =========================================== */
 
     class Cell {
-        constructor(game, x, y) {
-            this.game = game;
+        constructor(pipeGame, x, y) {
+            this.pipeGame = pipeGame;
             this.x = x;
             this.y = y;
 
             // state
             this.pipeType = '';
-            this.pipeDir = '';
+            this.pipeDir = 0;
 
             this.duration = -1; // in ms
             this.progress = 0; // in ms
+
+            this.inList = [];
+            this.outList = [];
         }
 
         getNeighbor(dx, dy) {
-            return ((this.game[this.x + dx] || {})[this.y + dy] || {});
+            return ((this.pipeGame.map[this.x + dx] || {})[this.y + dy] || {});
+        }
+
+        updateProgress(dt) {
+            if (this.progress < this.duration) {
+                this.progress += dt;
+            }
+        }
+
+        isFull() {
+            if (this.duration < 0) return null;
+            return this.progress >= this.duration;
+        }
+
+        canInputFrom(inDir) {
+            const dirIndexList = {
+                '+': [0, 1, 2, 3],
+                'T': [0, 1, 2],
+                'L': [0, 3],
+                '|': [1, 3],
+            };
+            const dirs = dirIndexList[this.pipeType].map((i) => (i + this.pipeDir) % 4);
+
+            return dirs.includes(inDir);
+        }
+
+        activatePipe(progress, duration, inList) {
+            this.progress = Math.max(this.progress, progress);
+            this.duration = duration;
+            this.inList = Array.from(new Set(this.inList.concat(inList)));
+        }
+
+        updateOutList() {
+            const dirIndexList = {
+                '+': [0, 1, 2, 3],
+                'T': [0, 1, 2],
+                'L': [0, 3],
+                '|': [1, 3],
+            };
+            const dirs = dirIndexList[this.pipeType].map((i) => (i + this.pipeDir) % 4);
+
+
+            // const possibleOutList = dirs.filter((i) => !this.inList.includes(i));
+            this.outList = dirs.filter((i) => !this.inList.includes(i));
+            // console.log('updateOutList', this.x, this.y, this.pipeType, this.pipeDir, dirs, this.outList);
+        }
+
+        pourToNeighbors(newDuration, fronts) {
+            const deltas = [
+                [1, 0],
+                [0, 1],
+                [-1, 0],
+                [0, -1],
+            ];
+
+            const dirIndexList = {
+                '+': [0, 1, 2, 3],
+                'T': [0, 1, 2],
+                'L': [0, 3],
+                '|': [1, 3],
+            };
+
+            const dirs = dirIndexList[this.pipeType].map((i) => (i + this.pipeDir) % 4);
+
+            dirs.forEach((i) => {
+                const delta = deltas[i];
+                const cell = this.getNeighbor(...delta);
+                if (!cell) return;
+                if (cell.pipeType === '') return;
+
+                const inDir = (i + 2) % 4;
+                if (cell.isFull()) return;
+                if (!cell.canInputFrom(inDir)) return;
+
+                cell.activatePipe(this.progress - this.duration, newDuration, [(i + 2) % 4]);
+                fronts.add(cell);
+            })
         }
     }
 
     const pipeGame = {
         gridWidth: 25,
         gridHeight: 25,
+
+        map: [],
+        fronts: new Set(),
+        fluidDuration: 3000,
+        last: 0,
+
+        ups: 10,
+
         initMap() {
             this.map = (new Array(this.gridWidth)
                 .fill(1)
@@ -101,9 +188,60 @@ $(function () {
                         .map((_, y) => new Cell(this, x, y))
                     );
                 }));
+            this.iterateMap((cell, x, y) => {
+                cell.pipeType = ['', '+', 'T', 'L', '|'][Math.floor(Math.random() * 5)];
+                cell.pipeDir = Math.floor(Math.random() * 4);
+            });
         },
-        map: [],
+        iterateMap(callback) {
+            this.map.forEach((col, x) => {
+                col.forEach((cell, y) => {
+                    // const cellGraphic = mapGraphics[x][y];
+                    callback(cell, x, y);
+                });
+            })
+        },
+        startGame() {
+            const [xx, yy] = [
+                Math.floor(this.gridWidth / 2),
+                Math.floor(this.gridHeight / 2),
+            ];
+            let cell;
+            this.fronts.add(cell = this.map[xx][yy]);
 
+            cell.pipeType = '+';
+            cell.activatePipe(Math.floor(0.4 * this.fluidDuration), this.fluidDuration, []);
+            cell.updateOutList();
+
+            this.last = Date.now();
+            setTimeout(() => this.updateGame(), 1000 / this.ups);
+        },
+
+        updateGame() {
+            const delta = Date.now() - this.last;
+            // console.log('updateGame', delta);
+            this.fronts.forEach((cell) => {
+                if (cell.isFull()) this.fronts.delete(cell);
+            });
+            this.fronts.forEach((cell) => {
+                cell.updateProgress(delta);
+                // console.log(cell);
+
+            });
+            this.fronts.forEach((cell) => {
+                // console.log(cell.isFull());
+
+                if (cell.isFull()) {
+                    cell.pourToNeighbors(this.fluidDuration, this.fronts);
+                }
+            });
+            this.fronts.forEach((cell) => {
+                cell.updateOutList();
+            });
+
+            this.last = Date.now();
+            setTimeout(this.updateGame.bind(this), 1000 / this.ups);
+        }
     };
 
 
@@ -230,20 +368,21 @@ $(function () {
                 progress,
 
             } = pipeData;
+            const pipeWidth = 5;
 
             this.fill.clear();
 
             // if not yet fill
             if (duration < 0) return;
+            // console.log('updatePipeFill', progress / duration);
+
 
             let color = Phaser.Display.Color.HSLToColor(0.7, 1, 0.5).color;
-            const pipeWidth = 5;
             this.fill.lineStyle(pipeWidth, color, 1);
 
             const [w2, h2, pipeWidth2] = [w / 2, h / 2, pipeWidth / 2];
 
-            const inPercent = Math.min(0.5, progress / duration) * 2;
-            console.log(inPercent);
+            const inPercent = Math.max(0, Math.min(0.5, progress / duration)) * 2;
 
             inList.forEach((input) => {
                 switch (input) {
@@ -262,7 +401,7 @@ $(function () {
                 }
 
             });
-            const outPercent = Math.max(0, progress / duration - 0.5) * 2;
+            const outPercent = Math.max(0, Math.min(0.5, progress / duration - 0.5)) * 2;
 
             outList.forEach((input) => {
                 switch (input) {
@@ -279,7 +418,6 @@ $(function () {
                         this.fill.lineBetween(0, -pipeWidth2, 0, -pipeWidth2 - ((h2 - pipeWidth2) * outPercent));
                     } break;
                 }
-
             });
 
         }
@@ -308,47 +446,50 @@ $(function () {
                             const cellGraphic = new CellGraphic(this);
                             this.add.existing(cellGraphic);
                             cellGraphic.createUI();
-                            cellGraphic.init({
-                                dispX: x * this.cellWidth,
-                                dispY: y * this.cellHeight,
-                                w: this.cellWidth,
-                                h: this.cellHeight,
-                                pipeData: {
-                                    pipeType: ['', '+', 'T', 'L', '|'][Math.floor(Math.random() * 5)],
-                                    pipeDir: Math.floor(Math.random() * 4),
-                                    inList: [],
-                                    outList: [],
-                                    duration: -1,
-                                    progress: 0,
-                                }
-                            });
-                            cellGraphic.updatePipeFill({
-                                // pipeType: ['', '+', 'T', 'L', '|'][Math.floor(Math.random() * 5)],
-                                // pipeDir: Math.floor(Math.random() * 4),
-                                inList: [],
-                                outList: [2],
-                                duration: 4,
-                                progress: Math.random() * 4,
-
-                            });
                             return cellGraphic;
                         })
                     );
                 }));
+            pipeGame.iterateMap((cell, x, y) => {
+                const cellGraphic = this.mapGraphics[x][y];
+                cellGraphic.init({
+                    dispX: x * this.cellWidth,
+                    dispY: y * this.cellHeight,
+                    w: this.cellWidth,
+                    h: this.cellHeight,
+                    pipeData: {
+                        pipeType: cell.pipeType,
+                        pipeDir: cell.pipeDir,
+                        // inList: [],
+                        // outList: [],
+                        // duration: -1,
+                        // progress: 0,
+                    }
+                });
+            });
+
+
         }
 
         update(time, delta) {
-
+            this.updateBoard();
         }
 
         updateBoard() {
-            // this.mapGraphics.forEach
-            pipeGame.map.forEach((col, x) => {
-                col.forEach((cell, y) => {
-                    const cellGraphic = this.mapGraphics[x][y];
-                });
-            })
+            pipeGame.iterateMap((cell, x, y) => {
+                // console.log(x,y);
 
+                const cellGraphic = this.mapGraphics[x][y];
+                cellGraphic.updatePipeFill({
+                    // pipeType: ['', '+', 'T', 'L', '|'][Math.floor(Math.random() * 5)],
+                    // pipeDir: Math.floor(Math.random() * 4),
+                    inList: cell.inList,
+                    outList: cell.outList,
+                    duration: cell.duration,
+                    progress: cell.progress,
+
+                });
+            });
         }
 
     }
@@ -365,6 +506,9 @@ $(function () {
     };
     // when the page is loaded, create our game instance
     var game = new Game(config);
+
+    pipeGame.initMap();
+    pipeGame.startGame();
 
     // setTimeout(() => {
     // }, 100);
