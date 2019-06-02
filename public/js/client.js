@@ -283,10 +283,10 @@ $(function () {
         players: [],
         samplePlayer: new Player(-1, {
             fluidTable: [
-                { count: 0, duration: 4000 },
-                { count: 2, duration: 3000 },
-                { count: 6, duration: 2000 },
-                { count: 10, duration: 1700 },
+                { count: 0, duration: 5000 },
+                { count: 2, duration: 4000 },
+                { count: 6, duration: 3000 },
+                { count: 10, duration: 2000 },
                 { count: 15, duration: 1500 },
                 { count: 20, duration: 1000 },
                 { count: 30, duration: 500 },
