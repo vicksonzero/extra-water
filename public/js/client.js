@@ -108,6 +108,9 @@ $(function () {
         }
 
         updateProgress(dt) {
+            console.log('updateProgress', this.pipeType, this.progress);
+
+            if (this.pipeType === '-') this.progress = Math.max(Math.floor(0.4 * this.duration), this.progress);
             if (this.progress < this.duration) {
                 this.progress += dt;
             }
@@ -293,6 +296,9 @@ $(function () {
             if (this.fronts.size > 0) {
                 this.last = Date.now();
                 setTimeout(this.updateFluid.bind(this), 1000 / this.ups);
+            } else {
+                console.log('game over');
+
             }
         },
 
@@ -352,11 +358,20 @@ $(function () {
             if (!player) throw new Error('playerGetCell: player not found: ' + playerID);
             console.log('playerPutCell', playerID, cell, cellX, cellY);
 
-            this.addCell(cellX, cellY, cell.pipeType, cell.pipeDir);
-            player.cellX = cellX;
-            player.cellY = cellY;
-            player.mode = 'cell';
-            this.dispatchPlayerChange();
+            const currentCell = this.map[cellX][cellY];
+            if (currentCell.progress <= 0 || currentCell.duration < 0) {
+                this.addCell(cellX, cellY, cell.pipeType, cell.pipeDir);
+                player.cellX = cellX;
+                player.cellY = cellY;
+                player.mode = 'cell';
+                this.dispatchPlayerChange();
+            } else {
+                console.log('playerPutCell: existing cell');
+
+                player.mode = 'cell';
+                this.dispatchPlayerChange();
+
+            }
         },
 
         onPlayerClickEdge(playerID, edgeDir) {
@@ -373,11 +388,20 @@ $(function () {
             const player = this.players[playerID];
             if (!player) throw new Error('playerGetCell: player not found: ' + playerID);
 
-            console.log('playerPickUpCell', playerID);
+            // debugger;
+            const cell = (this.map[player.cellX] || {})[player.cellY];
+            if (!cell) throw new Error('playerGetCell: cell not found: ' + player.cellX + ',' + player.cellY);
+
+
+            console.log('playerPickUpCell', playerID, player.mode, cell.isFull());
 
             if (player.mode === 'cell') {
-                player.mode = 'rotate';
-                this.dispatchPlayerChange();
+                if (cell.isFull()) {
+                    console.log('playerPickUpCell isFull');
+
+                    player.mode = 'idle';
+                    this.playerGetCell(playerID);
+                }
             }
         },
         playerGetCell(playerID) {
@@ -693,6 +717,11 @@ $(function () {
                 }
             });
 
+            if (pipeData.progress > 0) {
+                this.disableInteractive();
+                // this.setInteractive(false);
+            }
+
         }
     }
 
@@ -725,44 +754,61 @@ $(function () {
                 if (gameObject.type == 'PlayerPhone') {
                     const playerPhone = gameObject;
                     console.log('dragstart', playerPhone.mode);
-                    if (playerPhone.mode === 'idle') {
-                        pipeGame.playerGetCell(playerPhone.playerID);
-                    } else if (playerPhone.mode === 'cell') {
-                        pipeGame.playerPickUpCell(playerPhone.playerID);
+                    if ((!playerPhone.cell || playerPhone.cell.x == null) || playerPhone.cell.progress >= playerPhone.cell.duration) {
+                        if (playerPhone.mode === 'idle') {
+                            pipeGame.playerGetCell(playerPhone.playerID);
+                        } else if (playerPhone.mode === 'cell') {
+                            pipeGame.playerPickUpCell(playerPhone.playerID);
+                        }
                     }
                 }
             });
             this.scene.input.on('drag', (pointer, gameObject, dragX, dragY) => {
                 if (gameObject.type == 'PlayerPhone') {
-                    this.scene.currentPlayer = gameObject;
-                    gameObject.x = dragX;
-                    gameObject.y = dragY;
+                    const playerPhone = gameObject;
+                    if (playerPhone.cell.x == null) {
+                        this.scene.currentPlayer = gameObject;
+                        gameObject.x = dragX;
+                        gameObject.y = dragY;
+                    }
+                }
+            });
+            this.scene.input.on('dragend', (pointer, gameObject, dropped) => {
+                if (gameObject.type == 'PlayerPhone') {
+                    if (!dropped) {
+                        gameObject.x = gameObject.input.dragStartX;
+                        gameObject.y = gameObject.input.dragStartY;
+                    }
                 }
             });
             this.scene.input.on('drop', (pointer, gameObject, zone) => {
                 // debugger;
                 if (gameObject.type == 'PlayerPhone') {
                     const playerPhone = gameObject;
-                    if (this.scene.isTutorial && !(zone.cellX == 12 && zone.cellY == 12)) {
-                        // debugger;
-                        playerPhone.x = playerPhone.input.dragStartX;
-                        playerPhone.y = playerPhone.input.dragStartY;
-                        this.scene.isTutorial = false;
+                    console.log('drop', this.scene.isTutorial, playerPhone.cell.x);
+                    if (playerPhone.cell.x == null) {
 
-                        this.scene.currentPlayer = null;
-                    } else {
-                        playerPhone.x = Math.floor(playerPhone.x / this.scene.cellWidth) * this.scene.cellWidth + this.scene.cellWidth / 2;
-                        playerPhone.y = Math.floor(playerPhone.y / this.scene.cellHeight) * this.scene.cellHeight + this.scene.cellHeight / 2;
-                        pipeGame.playerPutCell({
-                            playerID: playerPhone.playerID,
-                            cell: {
-                                pipeType: playerPhone.cell.pipeType,
-                                pipeDir: playerPhone.cell.pipeDir,
-                            },
-                            cellX: zone.cellX,
-                            cellY: zone.cellY
-                        });
-                        this.scene.currentPlayer = null;
+                        if (this.scene.isTutorial && !(zone.cellX == 12 && zone.cellY == 12)) {
+                            // debugger;
+                            playerPhone.x = playerPhone.input.dragStartX;
+                            playerPhone.y = playerPhone.input.dragStartY;
+
+                            this.scene.currentPlayer = null;
+                        } else {
+                            playerPhone.x = Math.floor(playerPhone.x / this.scene.cellWidth) * this.scene.cellWidth + this.scene.cellWidth / 2;
+                            playerPhone.y = Math.floor(playerPhone.y / this.scene.cellHeight) * this.scene.cellHeight + this.scene.cellHeight / 2;
+                            pipeGame.playerPutCell({
+                                playerID: playerPhone.playerID,
+                                cell: {
+                                    pipeType: playerPhone.cell.pipeType,
+                                    pipeDir: playerPhone.cell.pipeDir,
+                                },
+                                cellX: zone.cellX,
+                                cellY: zone.cellY
+                            });
+                            this.scene.currentPlayer = null;
+                            this.scene.isTutorial = false;
+                        }
                     }
                 }
             });
@@ -791,9 +837,9 @@ $(function () {
 
         toString() {
             if (this.cell) {
-                if (this.cell.cellX != null) {
+                if (this.cell.x != null) {
                     return `P-${this.playerID} m=${this.mode}, ` +
-                        `pos=${this.cell.cellX},${this.cell.cellY}` +
+                        `(${this.cell.x},${this.cell.y}) ` +
                         `c=[` +
                         `${this.cell.pipeType}, ${this.cell.pipeDir}, ` +
                         `${(this.cell.progress / this.cell.duration).toFixed(2)}]`;
@@ -966,7 +1012,7 @@ $(function () {
         }
 
         onPlayerUpdated(data) {
-            console.log('onPlayerUpdated', data);
+            // console.log('onPlayerUpdated', data);
 
             const { playerID, mode, cell } = data;
             const {
