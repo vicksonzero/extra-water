@@ -112,17 +112,17 @@ function init() {
     )
   });
 
-  router.get('/socket.io/socket.io.js', function (req, res) {
+  router.get('/js/socket.io.js', function (req, res) {
     // console.log('socket haha');
     res.setHeader('Content-Type', 'application/javascript');
     res.sendFile(path.join(__dirname, '../node_modules/socket.io-client/dist/socket.io.js'));
   });
-  router.get('/phaser/phaser.js', function (req, res) {
+  router.get('/js/phaser.js', function (req, res) {
     // console.log('phaser haha');
     res.setHeader('Content-Type', 'application/javascript');
     res.sendFile(path.join(__dirname, '../node_modules/phaser/dist/phaser.js'));
   });
-  router.get('/signals/signals.js', function (req, res) {
+  router.get('/js/signals.js', function (req, res) {
     // console.log('phaser haha');
     res.setHeader('Content-Type', 'application/javascript');
     res.sendFile(path.join(__dirname, '../node_modules/signals/dist/signals.min.js'));
