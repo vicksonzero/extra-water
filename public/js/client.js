@@ -215,12 +215,12 @@ $(function () {
 
         map: [],
         fronts: new Set(),
-        fluidDuration: 3000,
+        fluidDuration: 5000,
         last: 0,
 
         ups: 10,
         players: [],
-        samplePlayer: new Player(-1, { fluidDuration: 3000, fluidDurationMin: 1000 }),
+        samplePlayer: new Player(-1, { fluidDuration: 5000, fluidDurationMin: 1000 }),
         connectCommand: { leftCell: null, leftOut: null, rightCell: null, rightIn: null },
         playerJoined: new signals.Signal(),
         playerUpdated: new signals.Signal(),
@@ -424,7 +424,7 @@ $(function () {
 
             cell.pipeType = pipeType || '-';
             cell.pipeDir = pipeDir;
-            cell.activatePipe(Math.floor(0.4 * this.fluidDuration), this.fluidDuration, []);
+            cell.activatePipe(0, this.fluidDuration, []);
             cell.updateOutList();
             if (this.fronts.size <= 0) this.fronts.add(cell);
         }
@@ -788,9 +788,25 @@ $(function () {
             // }
             this.cellGraphic.updatePipeFill(cell);
         }
+
+        toString() {
+            if (this.cell) {
+                if (this.cell.cellX != null) {
+                    return `P-${this.playerID} m=${this.mode}, ` +
+                        `pos=${this.cell.cellX},${this.cell.cellY}` +
+                        `c=[` +
+                        `${this.cell.pipeType}, ${this.cell.pipeDir}, ` +
+                        `${(this.cell.progress / this.cell.duration).toFixed(2)}]`;
+                } else {
+                    return `P-${this.playerID} m=${this.mode}, ` +
+                        `c=[` +
+                        `${this.cell.pipeType}, ${this.cell.pipeDir}, ` +
+                        `${(this.cell.progress / this.cell.duration).toFixed(2)}]`;
+                }
+            }
+            return `P-${this.playerID} m=${this.mode}`;
+        }
     }
-
-
 
 
 
@@ -817,6 +833,8 @@ $(function () {
             this.playerPhones = [];
             pipeGame.playerJoined.add((...params) => this.onPlayerAdded(...params));
             pipeGame.playerUpdated.add((...params) => this.onPlayerUpdated(...params));
+
+            this.debugText = null;
 
             this.isTutorial = true;
         }
@@ -879,7 +897,7 @@ $(function () {
             // if (this.key3.isDown) this.currentPlayer = 3;
             // if (this.key4.isDown) this.currentPlayer = 4;
             // if (this.key5.isDown) this.currentPlayer = 5;
-
+            this.debugText.setText(this.playerPhones.map(p => p.toString()).join('\n'));
         }
 
         updateBoard() {
@@ -932,6 +950,8 @@ $(function () {
             addBtn.setInteractive().on('pointerup', () => {
                 pipeGame.playerJoin();
             });
+
+            this.uiContainer.add(this.debugText = this.add.text(0, 0, 'debug_mode', { color: 'black' }));
         }
 
         addPlayer() {
