@@ -108,7 +108,7 @@ $(function () {
         }
 
         updateProgress(dt) {
-            console.log('updateProgress', this.pipeType, this.progress);
+            // console.log('updateProgress', this.pipeType, this.progress);
 
             if (this.pipeType === '-') this.progress = Math.max(Math.floor(0.4 * this.duration), this.progress);
             if (this.progress < this.duration) {
@@ -203,7 +203,7 @@ $(function () {
             }).length >= 2;
         }
 
-        pourToNeighbors(newDuration, fronts) {
+        pourToNeighbors(newDuration, fronts, players) {
             const deltas = [
                 [1, 0],
                 [0, 1],
@@ -224,21 +224,28 @@ $(function () {
                 if (cell.isFull()) return;
                 if (!cell.canInputFrom(inDir)) return;
 
-                cell.activatePipe(this.progress - this.duration, newDuration, [(i + 2) % 4]);
+                const player = players.find((player) => {
+                    return (player.mode === 'cell' &&
+                        player.cellX === cell.x && player.cellY === cell.y
+                    );
+                });
+                player.updateFluidDuration();
+                cell.activatePipe(this.progress - this.duration, player.fluidDuration, [(i + 2) % 4]);
                 fronts.add(cell);
             })
         }
     }
 
     class Player {
-        constructor(i, { cellX, cellY, fluidDuration, fluidDurationMin }) {
+        constructor(i, { fluidTable }) {
             this.playerID = i;
-            this.fluidDuration = fluidDuration;
-            this.fluidDurationMin = fluidDurationMin;
+            this.fluidTable = fluidTable.slice();
+            this.fluidDuration = 3000;
+            this.fluidLevel = 0;
             this.mode = 'idle'; // 'idle', 'rotate', 'cell'
             this.cell = null;
-            this.cellX = cellX;
-            this.cellY = cellY;
+            this.cellX = null;
+            this.cellY = null;
         }
 
         setViewXY(cellX, cellY) {
@@ -248,6 +255,17 @@ $(function () {
 
         setCell(cell) {
             this.cell = cell;
+        }
+
+        addFluidLevel(amt) {
+            this.fluidLevel += amt;
+            this.fluidLevel = Math.max(0, this.fluidLevel);
+            this.updateFluidDuration();
+        }
+
+        updateFluidDuration() {
+            const { count, duration } = this.fluidTable.find(({ count, duration }) => count >= this.fluidLevel);
+            this.fluidDuration = duration;
         }
     }
 
@@ -263,7 +281,17 @@ $(function () {
 
         ups: 10,
         players: [],
-        samplePlayer: new Player(-1, { fluidDuration: 5000, fluidDurationMin: 1000 }),
+        samplePlayer: new Player(-1, {
+            fluidTable: [
+                { count: 0, duration: 4000 },
+                { count: 2, duration: 3000 },
+                { count: 6, duration: 2000 },
+                { count: 10, duration: 1700 },
+                { count: 15, duration: 1500 },
+                { count: 20, duration: 1000 },
+                { count: 30, duration: 500 },
+            ],
+        }),
         connectCommand: { leftCell: null, leftOut: null, rightCell: null, rightIn: null },
         playerJoined: new signals.Signal(),
         playerUpdated: new signals.Signal(),
@@ -330,12 +358,26 @@ $(function () {
                 // console.log(cell.isFull());
 
                 if (cell.isFull()) {
-                    cell.pourToNeighbors(this.fluidDuration, this.fronts);
+                    cell.pourToNeighbors(this.fluidDuration, this.fronts, this.players);
+
+                    const player = this.players.find((player) => {
+                        return (player.mode === 'cell' &&
+                            player.cellX === cell.x && player.cellY === cell.y
+                        );
+                    });
+                    player.mode = 'idle';
                 }
             });
             this.fronts.forEach((cell) => {
                 cell.updateOutList();
             });
+
+            this.players.forEach((player) => {
+                if (player.mode === 'idle') {
+
+                    player.addFluidLevel(-delta / 1000 / 5 * 0.8);
+                }
+            })
 
             this.dispatchPlayerChange();
 
@@ -362,12 +404,14 @@ $(function () {
                     score += 1;
                     const neighbours = cell.getNeighbors();
                     // debugger;
-                    console.log('updateScore', playerID, neighbours);
+                    // console.log('updateScore', playerID, neighbours);
 
                     if (cell.canCompleteCycle()) {
                         score += 4;
                     }
+                    this.players[playerID].addFluidLevel(1);
                     this.addScore(playerID, score);
+
                 }
             });
         },
@@ -376,10 +420,11 @@ $(function () {
             this.players.forEach((player) => {
                 if (player.mode === 'cell') {
                     const cell = this.map[player.cellX][player.cellY];
-                    console.log('dispatchPlayerChange cell');
+                    // console.log('dispatchPlayerChange cell');
 
                     this.playerUpdated.dispatch({
                         playerID: player.playerID,
+                        fluidLevel: player.fluidLevel,
                         mode: player.mode,
                         score: this.score,
                         cell: {
@@ -391,15 +436,17 @@ $(function () {
                             progress: cell.progress,
                             inList: cell.inList.slice(),
                             outList: cell.outList.slice(),
-                        }
+                        },
                     });
                 } else if (player.mode === 'rotate') {
                     const cell = player.cell;
-                    console.log('dispatchPlayerChange rotate');
+                    // console.log('dispatchPlayerChange rotate');
 
                     this.playerUpdated.dispatch({
                         playerID: player.playerID,
+                        fluidLevel: player.fluidLevel,
                         mode: player.mode,
+                        score: this.score,
                         cell: {
                             x: cell.x,
                             y: cell.y,
@@ -409,7 +456,27 @@ $(function () {
                             progress: cell.progress,
                             inList: cell.inList.slice(),
                             outList: cell.outList.slice(),
-                        }
+                        },
+                    });
+                } else if (player.mode === 'idle') {
+                    const cell = player.cell;
+                    // console.log('dispatchPlayerChange idle');
+
+                    this.playerUpdated.dispatch({
+                        playerID: player.playerID,
+                        fluidLevel: player.fluidLevel,
+                        mode: player.mode,
+                        score: this.score,
+                        // cell: {
+                        //     x: cell.x,
+                        //     y: cell.y,
+                        //     pipeType: cell.pipeType,
+                        //     pipeDir: cell.pipeDir,
+                        //     duration: cell.duration,
+                        //     progress: cell.progress,
+                        //     inList: cell.inList.slice(),
+                        //     outList: cell.outList.slice(),
+                        // },
                     });
                 }
             });
@@ -426,12 +493,13 @@ $(function () {
 
         playerPutCell({ playerID, cell, cellX, cellY }) {
             const player = this.players[playerID];
-            if (!player) throw new Error('playerGetCell: player not found: ' + playerID);
-            console.log('playerPutCell', playerID, cell, cellX, cellY);
+            if (!player) throw new Error('playerPutCell: player not found: ' + playerID);
 
+            player.updateFluidDuration();
+            console.log('playerPutCell', playerID, cell, cellX, cellY, player.fluidDuration);
             const currentCell = this.map[cellX][cellY];
             if (currentCell.progress <= 0 || currentCell.duration < 0) {
-                this.addCell(cellX, cellY, cell.pipeType, cell.pipeDir);
+                this.addCell(cellX, cellY, cell.pipeType, cell.pipeDir, player.fluidDuration);
                 player.cellX = cellX;
                 player.cellY = cellY;
                 player.mode = 'cell';
@@ -457,11 +525,11 @@ $(function () {
         },
         playerPickUpCell(playerID) {
             const player = this.players[playerID];
-            if (!player) throw new Error('playerGetCell: player not found: ' + playerID);
+            if (!player) throw new Error('playerPickUpCell: player not found: ' + playerID);
 
             // debugger;
             const cell = (this.map[player.cellX] || {})[player.cellY];
-            if (!cell) throw new Error('playerGetCell: cell not found: ' + player.cellX + ',' + player.cellY);
+            if (!cell) throw new Error('playerPickUpCell: cell not found: ' + player.cellX + ',' + player.cellY);
 
 
             console.log('playerPickUpCell', playerID, player.mode, cell.isFull());
@@ -514,12 +582,12 @@ $(function () {
             }
         },
 
-        addCell(x, y, pipeType, pipeDir) {
+        addCell(x, y, pipeType, pipeDir, fluidDuration) {
             const cell = this.map[x][y];
 
             cell.pipeType = pipeType || '-';
             cell.pipeDir = pipeDir;
-            cell.activatePipe(0, this.fluidDuration, []);
+            cell.activatePipe(0, fluidDuration, []);
             cell.updateOutList();
             if (this.fronts.size <= 0) this.fronts.add(cell);
         },
@@ -812,6 +880,7 @@ $(function () {
             this.type = 'PlayerPhone';
             this.mode = 'idle'; // 'idle', 'rotate', 'cell'
             this.playerID = playerID;
+            this.fluidLevel = 0;
             this.cell = null;
             this.add(this.bg = this.scene.add.image(0, 0, 'button'));
             this.bg.setScale(1 / 2.5);
@@ -866,7 +935,7 @@ $(function () {
                 // debugger;
                 if (gameObject.type == 'PlayerPhone') {
                     const playerPhone = gameObject;
-                    console.log('drop', this.scene.isTutorial, playerPhone.cell.x);
+                    // console.log('drop', this.scene.isTutorial, playerPhone.cell.x);
                     if (playerPhone.cell.x == null) {
 
                         if (this.scene.isTutorial && !(zone.cellX == 12 && zone.cellY == 12)) {
@@ -917,21 +986,29 @@ $(function () {
         }
 
         toString() {
+            const m = {
+                'idle': 'I',
+                'cell': 'C',
+                'rotate': 'R',
+            }[this.mode];
             if (this.cell) {
                 if (this.cell.x != null) {
-                    return `P-${this.playerID} m=${this.mode}, ` +
+                    return `P:${this.playerID}, ` +
+                        `${m}:${this.fluidLevel.toFixed(1)} ` +
                         `(${this.cell.x},${this.cell.y}) ` +
-                        `c=[` +
+                        `[` +
                         `${this.cell.pipeType}, ${this.cell.pipeDir}, ` +
-                        `${(this.cell.progress / this.cell.duration).toFixed(2)}]`;
+                        `${(this.cell.progress / this.cell.duration).toFixed(2)}, d=${this.cell.duration}]`;
                 } else {
-                    return `P-${this.playerID} m=${this.mode}, ` +
-                        `c=[` +
+                    return `P:${this.playerID}, ` +
+                        `${m}:${this.fluidLevel.toFixed(1)} ` +
+                        `[` +
                         `${this.cell.pipeType}, ${this.cell.pipeDir}, ` +
-                        `${(this.cell.progress / this.cell.duration).toFixed(2)}]`;
+                        `${(this.cell.progress / this.cell.duration).toFixed(2)}, d=${this.cell.duration}]`;
                 }
             }
-            return `P-${this.playerID} m=${this.mode}`;
+            return `P:${this.playerID}, ` +
+                `${m}:${this.fluidLevel.toFixed(1)} `;
         }
     }
 
@@ -982,6 +1059,7 @@ $(function () {
 
         }
         create() {
+            window.scene = this;
             this.mapContainer = this.add.container(0, 0).setName('mapContainer');
             this.playerContainer = this.add.container(0, 0).setName('playerContainer');
             this.uiContainer = this.add.container(0, 0).setName('uiContainer');
@@ -1066,13 +1144,15 @@ $(function () {
             this.uiContainer.add(startBtn = this.add.image(250, 400, 'start_button'));
             startBtn.setInteractive().on('pointerdown', () => {
                 startBtn.setTint(0xAAAAAA);
-
             });
             this.input.on('pointerup', () => {
                 startBtn.setTint(0xFFFFFF);
             });
             startBtn.setInteractive().on('pointerup', () => {
-                pipeGame.startGame();
+                if (!this.isTutorial) {
+                    pipeGame.startGame();
+                    startBtn.setVisible(false);
+                }
             });
 
             let addBtn;
@@ -1115,28 +1195,33 @@ $(function () {
         onPlayerUpdated(data) {
             // console.log('onPlayerUpdated', data);
 
-            const { playerID, mode, score, cell } = data;
-            const {
-                x,
-                y,
-                pipeType,
-                pipeDir,
-                duration,
-                progress,
-                inList,
-                outList,
-            } = cell;
+            const { playerID, mode, fluidLevel, score, cell } = data;
+            // const {
+            //     x,
+            //     y,
+            //     pipeType,
+            //     pipeDir,
+            //     duration,
+            //     progress,
+            //     inList,
+            //     outList,
+            // } = cell;
 
             if (score && ('' + score) != this.scoreText.text) {
                 this.scoreText.setText(score);
                 this.scoreHistory.push(score);
-                console.log('scoreHistory', this.scoreHistory);
+                // console.log('scoreHistory', this.scoreHistory);
             }
 
 
             this.playerPhones[playerID].mode = mode;
-            this.playerPhones[playerID].cell = cell;
-            this.playerPhones[playerID].drawCell(cell);
+            this.playerPhones[playerID].fluidLevel = fluidLevel;
+            if (mode !== 'idle') {
+                this.playerPhones[playerID].cell = cell;
+                this.playerPhones[playerID].drawCell(cell);
+            } else {
+                this.playerPhones[playerID].cell = null;
+            }
         }
 
         onScoreUpdated(playerID, addition, totalScore) {
