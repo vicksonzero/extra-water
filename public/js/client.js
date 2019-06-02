@@ -156,13 +156,8 @@ $(function () {
             // console.log('updateOutList', this.x, this.y, this.pipeType, this.pipeDir, dirs, this.outList);
         }
 
-        pourToNeighbors(newDuration, fronts) {
-            const deltas = [
-                [1, 0],
-                [0, 1],
-                [-1, 0],
-                [0, -1],
-            ];
+
+        getDirs() {
 
             const dirIndexList = {
                 '+': [0, 1, 2, 3],
@@ -173,6 +168,51 @@ $(function () {
             };
 
             const dirs = dirIndexList[this.pipeType].map((i) => (i + this.pipeDir) % 4);
+
+            return dirs;
+        }
+
+        getDeltas() {
+            const deltas = [
+                [1, 0],
+                [0, 1],
+                [-1, 0],
+                [0, -1],
+            ];
+            return this.getDirs().map((i) => deltas[i]);
+        }
+
+        getNeighbors() {
+            return this.getDeltas().map((delta) => this.getNeighbor(...delta));
+        }
+
+        canCompleteCycle() {
+            const deltas = [
+                [1, 0],
+                [0, 1],
+                [-1, 0],
+                [0, -1],
+            ];
+
+            // debugger;
+            return this.getDirs().filter((dir) => {
+                const delta = deltas[dir];
+                const neighbor = this.getNeighbor(...delta);
+
+                return neighbor.isFull() && neighbor.getDirs().some((d) => (d + 2) % 4 === dir);
+            }).length >= 2;
+        }
+
+        pourToNeighbors(newDuration, fronts) {
+            const deltas = [
+                [1, 0],
+                [0, 1],
+                [-1, 0],
+                [0, -1],
+            ];
+
+
+            const dirs = this.getDirs();
 
             dirs.forEach((i) => {
                 const delta = deltas[i];
@@ -227,6 +267,10 @@ $(function () {
         connectCommand: { leftCell: null, leftOut: null, rightCell: null, rightIn: null },
         playerJoined: new signals.Signal(),
         playerUpdated: new signals.Signal(),
+        scoreUpdated: new signals.Signal(),
+        gameIsOver: new signals.Signal(),
+
+        score: 0,
 
         initMap() {
             this.map = (new Array(this.gridWidth)
@@ -264,6 +308,7 @@ $(function () {
             // cell.activatePipe(Math.floor(0.4 * this.fluidDuration), this.fluidDuration, []);
             // cell.updateOutList();
         },
+
         startGame() {
             this.last = Date.now();
             setTimeout(() => this.updateFluid(), 1000 / this.ups);
@@ -280,6 +325,7 @@ $(function () {
                 // console.log(cell);
 
             });
+            this.updateScore();
             this.fronts.forEach((cell) => {
                 // console.log(cell.isFull());
 
@@ -298,8 +344,32 @@ $(function () {
                 setTimeout(this.updateFluid.bind(this), 1000 / this.ups);
             } else {
                 console.log('game over');
-
+                this.gameOver();
             }
+        },
+
+        updateScore() {
+            this.fronts.forEach((cell) => {
+                let score = 0;
+                const playerID = this.players.findIndex((player) => {
+                    return (player.mode === 'cell' &&
+                        player.cellX === cell.x && player.cellY === cell.y
+                    );
+                });
+                // console.log(`Player-${playerID}`);
+
+                if (cell.isFull()) {
+                    score += 1;
+                    const neighbours = cell.getNeighbors();
+                    // debugger;
+                    console.log('updateScore', playerID, neighbours);
+
+                    if (cell.canCompleteCycle()) {
+                        score += 4;
+                    }
+                    this.addScore(playerID, score);
+                }
+            });
         },
 
         dispatchPlayerChange() {
@@ -311,6 +381,7 @@ $(function () {
                     this.playerUpdated.dispatch({
                         playerID: player.playerID,
                         mode: player.mode,
+                        score: this.score,
                         cell: {
                             x: cell.x,
                             y: cell.y,
@@ -451,6 +522,16 @@ $(function () {
             cell.activatePipe(0, this.fluidDuration, []);
             cell.updateOutList();
             if (this.fronts.size <= 0) this.fronts.add(cell);
+        },
+
+        addScore(playerID, score) {
+            this.score += score;
+            console.log('addScore', this.score);
+
+            this.scoreUpdated.dispatch(playerID, score, this.score);
+        },
+        gameOver() {
+            this.gameIsOver.dispatch(this.score);
         }
     };
 
@@ -876,11 +957,20 @@ $(function () {
             this.mapContainer = null;
             this.playerContainer = null;
             this.uiContainer = null;
+            this.hudContainer = null;
             this.playerPhones = [];
             pipeGame.playerJoined.add((...params) => this.onPlayerAdded(...params));
             pipeGame.playerUpdated.add((...params) => this.onPlayerUpdated(...params));
+            pipeGame.scoreUpdated.add((...params) => this.onScoreUpdated(...params));
+            pipeGame.gameIsOver.add((...params) => this.onGameIsOver(...params));
+
 
             this.debugText = null;
+            this.scoreText = null;
+            this.gameOverText = null;
+
+            this.scoreHistory = [];
+
 
             this.isTutorial = true;
         }
@@ -895,6 +985,7 @@ $(function () {
             this.mapContainer = this.add.container(0, 0).setName('mapContainer');
             this.playerContainer = this.add.container(0, 0).setName('playerContainer');
             this.uiContainer = this.add.container(0, 0).setName('uiContainer');
+            this.hudContainer = this.add.container(0, 0).setName('hudContainer');
 
             this.cameras.main.setBackgroundColor('#AAAAAA');
             this.mapGraphics = (new Array(pipeGame.gridWidth)
@@ -997,7 +1088,17 @@ $(function () {
                 pipeGame.playerJoin();
             });
 
-            this.uiContainer.add(this.debugText = this.add.text(0, 0, 'debug_mode', { color: 'black' }));
+            this.uiContainer.add(this.debugText = this.add.text(500, 0, 'debug_mode', { color: 'black', align: 'right' }));
+            this.debugText.setOrigin(1, 0);
+
+            this.hudContainer.add(this.scoreText = this.add.text(0, 0, '--', { color: 'black' }));
+            this.hudContainer.add(this.gameOverText = this.add.text(250, 250, 'Game Over', {
+                color: 'black',
+                fontSize: '64px',
+            }));
+            this.gameOverText.setOrigin(0.5);
+            this.gameOverText.setAlpha(0.3);
+            this.gameOverText.setVisible(false);
         }
 
         addPlayer() {
@@ -1014,7 +1115,7 @@ $(function () {
         onPlayerUpdated(data) {
             // console.log('onPlayerUpdated', data);
 
-            const { playerID, mode, cell } = data;
+            const { playerID, mode, score, cell } = data;
             const {
                 x,
                 y,
@@ -1026,9 +1127,40 @@ $(function () {
                 outList,
             } = cell;
 
+            if (score && ('' + score) != this.scoreText.text) {
+                this.scoreText.setText(score);
+                this.scoreHistory.push(score);
+                console.log('scoreHistory', this.scoreHistory);
+            }
+
+
             this.playerPhones[playerID].mode = mode;
             this.playerPhones[playerID].cell = cell;
             this.playerPhones[playerID].drawCell(cell);
+        }
+
+        onScoreUpdated(playerID, addition, totalScore) {
+            const playerPhone = this.playerPhones[playerID];
+            if (!playerPhone) {
+                console.warn('playerPhone not found: ' + playerID);
+                return;
+            }
+
+            let scoreText;
+
+            this.hudContainer.add(scoreText = this.add.text(playerPhone.x, playerPhone.y, `+${addition}`, { color: 'black', fontSize: '24px', fontWeight: 700 }));
+            scoreText.setOrigin(0.5);
+            const duration = addition > 1 ? 6 : 3;
+            this.tweens.add({
+                targets: scoreText,
+                y: playerPhone.y - 50,
+                duration: duration * 1000,
+                onComplete: () => scoreText.destroy()
+            });
+        }
+
+        onGameIsOver() {
+            this.gameOverText.visible = true;
         }
     }
 
