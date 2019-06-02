@@ -353,12 +353,16 @@ $(function () {
 
     class CellGraphic extends Phaser.GameObjects.Container {
 
-        constructor(scene, x, y, children) {
+        constructor(cellX, cellY, scene, x, y, children) {
             super(scene, x, y, children);
             this.bg = null;
             this.pipe = null;
             this.cellWidth = 0;
             this.cellHeight = 0;
+            this.cellX = cellX;
+            this.cellY = cellY;
+
+
         }
         createUI() {
             this.add(this.bg = this.scene.add.graphics({
@@ -409,6 +413,10 @@ $(function () {
 
             this.bg.clear();
             let color = Phaser.Display.Color.HSLToColor(0.7, 0.5, 0.5).color;
+
+            if(this.cellX == 12 && this.cellY == 12){
+                color = Phaser.Display.Color.HSLToColor(0, 1, 0.5).color;
+            }
             this.bg.lineStyle(1, color, 1);
             this.bg.strokeRect(-w / 2, -h / 2, w, h);
 
@@ -455,6 +463,37 @@ $(function () {
             }
 
             this.pipe.angle = pipeDir * 90;
+
+            this.initInteractive();
+        }
+
+
+        initInteractive() {
+            this.setInteractive(new Phaser.Geom.Rectangle(-10, -10, 20, 20), Phaser.Geom.Rectangle.Contains, true);
+
+            // this.scene.input.on('drag', function (pointer, gameObject, dragX, dragY) {
+            //     if (gameObject.type == 'PlayerPhone') {
+            //         gameObject.x = dragX;
+            //         gameObject.y = dragY;
+            //     }
+            // });
+            // this.scene.input.on('drag', function (pointer, gameObject, dragX, dragY) {
+            //     if (gameObject.type == 'PlayerPhone') {
+            //         gameObject.x = dragX;
+            //         gameObject.y = dragY;
+            //     }
+            // });
+            // this.scene.input.on('drop', function (pointer, gameObject, isOver, a, b) {
+            //     // debugger;
+            //     if (gameObject.type == 'PlayerPhone') {
+            //         // gameObject.x = dragX;
+            //         // gameObject.y = dragY;
+            //         gameObject.x = Math.floor(gameObject.x / this.scene.cellWidth) * this.scene.cellWidth + this.scene.cellWidth / 2;
+            //         gameObject.y = Math.floor(gameObject.y / this.scene.cellHeight) * this.scene.cellHeight + this.scene.cellHeight / 2;
+            //     }
+            // });
+            // this.scene.input.setDraggable(this);
+
         }
 
         updatePipeFill(pipeData) {
@@ -532,8 +571,10 @@ $(function () {
             this.type = 'PlayerPhone';
             this.add(this.bg = this.scene.add.image(0, 0, 'button'));
             this.bg.setScale(1 / 2.5);
+
+            this.initInteractive();
         }
-        init() {
+        initInteractive() {
             this.setInteractive(new Phaser.Geom.Rectangle(-10, -10, 20, 20), Phaser.Geom.Rectangle.Contains);
 
             // this.scene.input.on('drag', function (pointer, gameObject, dragX, dragY) {
@@ -548,13 +589,17 @@ $(function () {
                     gameObject.y = dragY;
                 }
             });
-            this.scene.input.on('dragend', function (pointer, gameObject, isOver) {
+            this.scene.input.on('drop', function (pointer, gameObject, zone) {
                 // debugger;
                 if (gameObject.type == 'PlayerPhone') {
-                    // gameObject.x = dragX;
-                    // gameObject.y = dragY;
-                    gameObject.x = Math.floor(gameObject.x / this.scene.cellWidth) * this.scene.cellWidth + this.scene.cellWidth / 2;
-                    gameObject.y = Math.floor(gameObject.y / this.scene.cellHeight) * this.scene.cellHeight + this.scene.cellHeight / 2;
+                    if (!(zone.cellX == 12 && zone.cellY == 12)) {
+                        // debugger;
+                        gameObject.x = gameObject.input.dragStartX;
+                        gameObject.y = gameObject.input.dragStartY;
+                    } else {
+                        gameObject.x = Math.floor(gameObject.x / this.scene.cellWidth) * this.scene.cellWidth + this.scene.cellWidth / 2;
+                        gameObject.y = Math.floor(gameObject.y / this.scene.cellHeight) * this.scene.cellHeight + this.scene.cellHeight / 2;
+                    }
                 }
             });
             this.scene.input.setDraggable(this);
@@ -606,7 +651,7 @@ $(function () {
                     return (new Array(pipeGame.gridHeight)
                         .fill(1)
                         .map((_, y) => {
-                            const cellGraphic = new CellGraphic(this);
+                            const cellGraphic = new CellGraphic(x, y, this);
                             this.mapContainer.add(cellGraphic);
                             cellGraphic.createUI();
                             return cellGraphic;
@@ -693,7 +738,6 @@ $(function () {
 
             this.playerPhones.push(this.playerContainer.add(player = new PlayerPhone(this, 250, 300)));
 
-            player.init();
         }
     }
 
