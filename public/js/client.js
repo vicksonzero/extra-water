@@ -76,17 +76,18 @@ $(function () {
         /**
          * 
          */
-        constructor({
-            pipeGame,
-            x,
-            y,
-            pipeType,
-            pipeDir,
-            duration,
-            progress,
-            inList,
-            outList,
-        }) {
+        constructor(params) {
+            const {
+                pipeGame,
+                x,
+                y,
+                pipeType,
+                pipeDir,
+                duration,
+                progress,
+                inList,
+                outList,
+            } = params;
             this.pipeGame = pipeGame;
             this.x = x;
             this.y = y;
@@ -187,10 +188,23 @@ $(function () {
     }
 
     class Player {
-        constructor(i, { fluidDuration, fluidDurationMin }) {
+        constructor(i, { cellX, cellY, fluidDuration, fluidDurationMin }) {
             this.playerID = i;
             this.fluidDuration = fluidDuration;
             this.fluidDurationMin = fluidDurationMin;
+            this.mode = 'idle'; // 'idle', 'rotate', 'cell'
+            this.cell = null;
+            this.cellX = cellX;
+            this.cellY = cellY;
+        }
+
+        setViewXY(cellX, cellY) {
+            this.cellX = cellX;
+            this.cellY = cellY;
+        }
+
+        setCell(cell) {
+            this.cell = cell;
         }
     }
 
@@ -209,6 +223,7 @@ $(function () {
         samplePlayer: new Player(-1, { fluidDuration: 3000, fluidDurationMin: 1000 }),
         connectCommand: { leftCell: null, leftOut: null, rightCell: null, rightIn: null },
         playerJoined: new signals.Signal(),
+        playerUpdated: new signals.Signal(),
 
         initMap() {
             this.map = (new Array(this.gridWidth)
@@ -248,11 +263,10 @@ $(function () {
         },
         startGame() {
             this.last = Date.now();
-            setTimeout(() => this.updateGame(), 1000 / this.ups);
-
+            setTimeout(() => this.updateFluid(), 1000 / this.ups);
         },
 
-        updateGame() {
+        updateFluid() {
             const delta = Date.now() - this.last;
             // console.log('updateGame', delta);
             this.fronts.forEach((cell) => {
@@ -274,8 +288,54 @@ $(function () {
                 cell.updateOutList();
             });
 
-            this.last = Date.now();
-            setTimeout(this.updateGame.bind(this), 1000 / this.ups);
+            this.dispatchPlayerChange();
+
+            if (this.fronts.size > 0) {
+                this.last = Date.now();
+                setTimeout(this.updateFluid.bind(this), 1000 / this.ups);
+            }
+        },
+
+        dispatchPlayerChange() {
+            this.players.forEach((player) => {
+                if (player.mode === 'cell') {
+                    const cell = this.map[player.cellX][player.cellY];
+                    console.log('dispatchPlayerChange cell');
+
+                    this.playerUpdated.dispatch({
+                        playerID: player.playerID,
+                        mode: player.mode,
+                        cell: {
+                            x: cell.x,
+                            y: cell.y,
+                            pipeType: cell.pipeType,
+                            pipeDir: cell.pipeDir,
+                            duration: cell.duration,
+                            progress: cell.progress,
+                            inList: cell.inList.slice(),
+                            outList: cell.outList.slice(),
+                        }
+                    });
+                } else if (player.mode === 'rotate') {
+                    const cell = player.cell;
+                    console.log('dispatchPlayerChange rotate');
+
+                    this.playerUpdated.dispatch({
+                        playerID: player.playerID,
+                        mode: player.mode,
+                        cell: {
+                            x: cell.x,
+                            y: cell.y,
+                            pipeType: cell.pipeType,
+                            pipeDir: cell.pipeDir,
+                            duration: cell.duration,
+                            progress: cell.progress,
+                            inList: cell.inList.slice(),
+                            outList: cell.outList.slice(),
+                        }
+                    });
+                }
+            });
         },
 
         playerJoin() {
@@ -285,6 +345,18 @@ $(function () {
             this.playerJoined.dispatch({
                 playerID: player.playerID,
             });
+        },
+
+        playerPutCell({ playerID, cell, cellX, cellY }) {
+            const player = this.players[playerID];
+            if (!player) throw new Error('playerGetCell: player not found: ' + playerID);
+            console.log('playerPutCell', playerID, cell, cellX, cellY);
+
+            this.addCell(cellX, cellY, cell.pipeType, cell.pipeDir);
+            player.cellX = cellX;
+            player.cellY = cellY;
+            player.mode = 'cell';
+            this.dispatchPlayerChange();
         },
 
         onPlayerClickEdge(playerID, edgeDir) {
@@ -297,6 +369,56 @@ $(function () {
 
             }
         },
+        playerPickUpCell(playerID) {
+            const player = this.players[playerID];
+            if (!player) throw new Error('playerGetCell: player not found: ' + playerID);
+
+            console.log('playerPickUpCell', playerID);
+
+            if (player.mode === 'cell') {
+                player.mode = 'rotate';
+                this.dispatchPlayerChange();
+            }
+        },
+        playerGetCell(playerID) {
+            const player = this.players[playerID];
+            if (!player) throw new Error('playerGetCell: player not found: ' + playerID);
+
+            console.log('playerGetCell', playerID);
+
+            if (player.mode === 'idle') {
+                if (this.fronts.size <= 0) {
+                    player.setCell(new Cell({
+                        pipeGame: this,
+                        pipeType: '-',
+                        pipeDir: Math.floor(Math.random() * 4),
+                    }));
+                    player.mode = 'rotate';
+                    this.dispatchPlayerChange();
+                } else {
+                    player.setCell(new Cell({
+                        pipeGame: this,
+                        pipeType: ['+', 'T', 'L', '|'][Math.floor(Math.random() * 4)],
+                        pipeDir: Math.floor(Math.random() * 4),
+                    }));
+                    player.mode = 'rotate';
+                    this.dispatchPlayerChange();
+                }
+            }
+        },
+
+        playerRotate(playerID) {
+            const player = this.players[playerID];
+            if (!player) throw new Error('playerGetCell: player not found: ' + playerID);
+            console.log('playerRotate', playerID);
+
+            if (player.mode === 'rotate') {
+                player.cell.pipeDir += 1;
+                player.cell.pipeDir %= 4;
+                this.dispatchPlayerChange();
+            }
+        },
+
         addCell(x, y, pipeType, pipeDir) {
             const cell = this.map[x][y];
 
@@ -353,7 +475,7 @@ $(function () {
 
     class CellGraphic extends Phaser.GameObjects.Container {
 
-        constructor(cellX, cellY, scene, x, y, children) {
+        constructor(cellX, cellY, w, h, scene, x, y, children) {
             super(scene, x, y, children);
             this.bg = null;
             this.pipe = null;
@@ -362,7 +484,8 @@ $(function () {
             this.cellX = cellX;
             this.cellY = cellY;
 
-
+            this.cellWidth = w;
+            this.cellHeight = h;
         }
         createUI() {
             this.add(this.bg = this.scene.add.graphics({
@@ -406,15 +529,14 @@ $(function () {
                 },
             }));
         }
-        init({ dispX, dispY, w, h, pipeData }) {
-            this.cellWidth = w;
-            this.cellHeight = h;
-            this.setPosition(dispX + w / 2, dispY + h / 2);
+        init() {
+            const w = this.cellWidth;
+            const h = this.cellHeight;
 
             this.bg.clear();
             let color = Phaser.Display.Color.HSLToColor(0.7, 0.5, 0.5).color;
 
-            if(this.cellX == 12 && this.cellY == 12){
+            if (this.cellX == 12 && this.cellY == 12) {
                 color = Phaser.Display.Color.HSLToColor(0, 1, 0.5).color;
             }
             this.bg.lineStyle(1, color, 1);
@@ -422,6 +544,14 @@ $(function () {
 
             // this.bg.fillStyle(color, 0.1);
             // this.bg.fillRect(-w / 2, -h / 2, w, h);
+
+
+            this.initInteractive();
+        }
+
+        drawPipe(pipeData) {
+            const w = this.cellWidth;
+            const h = this.cellHeight;
 
             const {
                 pipeType,
@@ -435,7 +565,7 @@ $(function () {
 
 
             this.pipe.clear();
-            color = Phaser.Display.Color.HSLToColor(0.7, 0.1, 0.5).color;
+            let color = Phaser.Display.Color.HSLToColor(0.7, 0.1, 0.5).color;
             const pipeWidth = 5;
             this.pipe.lineStyle(pipeWidth, color, 1);
             // console.log('pipeType', pipeType);
@@ -463,27 +593,25 @@ $(function () {
             }
 
             this.pipe.angle = pipeDir * 90;
-
-            this.initInteractive();
         }
 
 
         initInteractive() {
             this.setInteractive(new Phaser.Geom.Rectangle(-10, -10, 20, 20), Phaser.Geom.Rectangle.Contains, true);
 
-            // this.scene.input.on('drag', function (pointer, gameObject, dragX, dragY) {
+            // this.scene.input.on('drag',  (pointer, gameObject, dragX, dragY) =>{
             //     if (gameObject.type == 'PlayerPhone') {
             //         gameObject.x = dragX;
             //         gameObject.y = dragY;
             //     }
             // });
-            // this.scene.input.on('drag', function (pointer, gameObject, dragX, dragY) {
+            // this.scene.input.on('drag',  (pointer, gameObject, dragX, dragY)=> {
             //     if (gameObject.type == 'PlayerPhone') {
             //         gameObject.x = dragX;
             //         gameObject.y = dragY;
             //     }
             // });
-            // this.scene.input.on('drop', function (pointer, gameObject, isOver, a, b) {
+            // this.scene.input.on('drop',  (pointer, gameObject, isOver, a, b)=> {
             //     // debugger;
             //     if (gameObject.type == 'PlayerPhone') {
             //         // gameObject.x = dragX;
@@ -499,6 +627,9 @@ $(function () {
         updatePipeFill(pipeData) {
             const w = this.cellWidth;
             const h = this.cellHeight;
+
+            // console.log('updatePipeFill', pipeData);
+
 
             const {
                 pipeType,
@@ -566,44 +697,96 @@ $(function () {
     }
 
     class PlayerPhone extends Phaser.GameObjects.Container {
-        constructor(scene, x, y, children) {
+        constructor(playerID, scene, x, y, children) {
             super(scene, x, y, children);
             this.type = 'PlayerPhone';
+            this.mode = 'idle'; // 'idle', 'rotate', 'cell'
+            this.playerID = playerID;
+            this.cell = null;
             this.add(this.bg = this.scene.add.image(0, 0, 'button'));
             this.bg.setScale(1 / 2.5);
 
+            this.add(this.cellGraphic = new CellGraphic(0, 0, 20, 20, scene, 0, 0));
+
+            this.cellGraphic.createUI();
+            // this.cellGraphic.init(); // don't init because don't want interactive
             this.initInteractive();
         }
         initInteractive() {
             this.setInteractive(new Phaser.Geom.Rectangle(-10, -10, 20, 20), Phaser.Geom.Rectangle.Contains);
 
-            // this.scene.input.on('drag', function (pointer, gameObject, dragX, dragY) {
+            // this.scene.input.on('drag', (pointer, gameObject, dragX, dragY)=> {
             //     if (gameObject.type == 'PlayerPhone') {
             //         gameObject.x = dragX;
             //         gameObject.y = dragY;
             //     }
             // });
-            this.scene.input.on('drag', function (pointer, gameObject, dragX, dragY) {
+            this.scene.input.on('dragstart', (pointer, gameObject, dragX, dragY) => {
                 if (gameObject.type == 'PlayerPhone') {
+                    const playerPhone = gameObject;
+                    console.log('dragstart', playerPhone.mode);
+                    if (playerPhone.mode === 'idle') {
+                        pipeGame.playerGetCell(playerPhone.playerID);
+                    } else if (playerPhone.mode === 'cell') {
+                        pipeGame.playerPickUpCell(playerPhone.playerID);
+                    }
+                }
+            });
+            this.scene.input.on('drag', (pointer, gameObject, dragX, dragY) => {
+                if (gameObject.type == 'PlayerPhone') {
+                    this.scene.currentPlayer = gameObject;
                     gameObject.x = dragX;
                     gameObject.y = dragY;
                 }
             });
-            this.scene.input.on('drop', function (pointer, gameObject, zone) {
+            this.scene.input.on('drop', (pointer, gameObject, zone) => {
                 // debugger;
                 if (gameObject.type == 'PlayerPhone') {
-                    if (!(zone.cellX == 12 && zone.cellY == 12)) {
+                    const playerPhone = gameObject;
+                    if (this.scene.isTutorial && !(zone.cellX == 12 && zone.cellY == 12)) {
                         // debugger;
-                        gameObject.x = gameObject.input.dragStartX;
-                        gameObject.y = gameObject.input.dragStartY;
+                        playerPhone.x = playerPhone.input.dragStartX;
+                        playerPhone.y = playerPhone.input.dragStartY;
+                        this.scene.isTutorial = false;
+
+                        this.scene.currentPlayer = null;
                     } else {
-                        gameObject.x = Math.floor(gameObject.x / this.scene.cellWidth) * this.scene.cellWidth + this.scene.cellWidth / 2;
-                        gameObject.y = Math.floor(gameObject.y / this.scene.cellHeight) * this.scene.cellHeight + this.scene.cellHeight / 2;
+                        playerPhone.x = Math.floor(playerPhone.x / this.scene.cellWidth) * this.scene.cellWidth + this.scene.cellWidth / 2;
+                        playerPhone.y = Math.floor(playerPhone.y / this.scene.cellHeight) * this.scene.cellHeight + this.scene.cellHeight / 2;
+                        pipeGame.playerPutCell({
+                            playerID: playerPhone.playerID,
+                            cell: {
+                                pipeType: playerPhone.cell.pipeType,
+                                pipeDir: playerPhone.cell.pipeDir,
+                            },
+                            cellX: zone.cellX,
+                            cellY: zone.cellY
+                        });
+                        this.scene.currentPlayer = null;
                     }
                 }
             });
             this.scene.input.setDraggable(this);
 
+        }
+
+        drawCell(cell) {
+            const {
+                x,
+                y,
+                pipeType,
+                pipeDir,
+                duration,
+                progress,
+                inList,
+                outList,
+            } = cell;
+
+            // TODO: not tear down every frame
+            // if (this.cell.) {
+            this.cellGraphic.drawPipe(cell);
+            // }
+            this.cellGraphic.updatePipeFill(cell);
         }
     }
 
@@ -626,18 +809,23 @@ $(function () {
             this.cellWidth = 20;
             this.cellHeight = 20;
             this.mapGraphics = null;
-            this.currentPlayer = -1;
+            this.currentPlayer = null;
 
             this.mapContainer = null;
             this.playerContainer = null;
             this.uiContainer = null;
             this.playerPhones = [];
             pipeGame.playerJoined.add((...params) => this.onPlayerAdded(...params));
+            pipeGame.playerUpdated.add((...params) => this.onPlayerUpdated(...params));
+
+            this.isTutorial = true;
         }
 
         preload() {
             this.load.image('start_button', './images/kenney/onscreencontrols/Sprites/shadedLight/shadedLight42.png');
             this.load.image('button', './images/kenney/onscreencontrols/Sprites/shadedLight/shadedLight12.png');
+            this.load.image('add_button', './images/kenney/onscreencontrols/Sprites/shadedLight/shadedLight18.png');
+
         }
         create() {
             this.mapContainer = this.add.container(0, 0).setName('mapContainer');
@@ -651,29 +839,18 @@ $(function () {
                     return (new Array(pipeGame.gridHeight)
                         .fill(1)
                         .map((_, y) => {
-                            const cellGraphic = new CellGraphic(x, y, this);
+                            const cellGraphic = new CellGraphic(x, y, this.cellWidth, this.cellHeight, this);
                             this.mapContainer.add(cellGraphic);
                             cellGraphic.createUI();
                             return cellGraphic;
                         })
                     );
                 }));
+            this.mapContainer.bringToTop(this.mapGraphics[12][12]);
             pipeGame.iterateMap((cell, x, y) => {
                 const cellGraphic = this.mapGraphics[x][y];
-                cellGraphic.init({
-                    dispX: x * this.cellWidth,
-                    dispY: y * this.cellHeight,
-                    w: this.cellWidth,
-                    h: this.cellHeight,
-                    pipeData: {
-                        pipeType: cell.pipeType,
-                        pipeDir: cell.pipeDir,
-                        // inList: [],
-                        // outList: [],
-                        // duration: -1,
-                        // progress: 0,
-                    }
-                });
+                cellGraphic.setPosition(x * this.cellWidth + this.cellWidth / 2, y * this.cellHeight + this.cellHeight / 2);
+                cellGraphic.init();
             });
             // this.key1 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
             // this.key2 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO);
@@ -682,6 +859,15 @@ $(function () {
             // this.key5 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FIVE);
 
             this.createUI();
+
+            this.input.on('pointerdown', (pointer, gameObject, zone) => {
+                if (pointer.buttons & 2) {
+                    // debugger;
+                    if ((this.currentPlayer || {}).type == 'PlayerPhone' && this.currentPlayer.mode === 'rotate') {
+                        pipeGame.playerRotate(this.currentPlayer.playerID);
+                    }
+                }
+            });
 
             this.addPlayer();
         }
@@ -713,6 +899,12 @@ $(function () {
                     });
                 }
             });
+
+            this.playerPhones.forEach((playerPhone) => {
+                if (playerPhone.cell) {
+                    playerPhone.cellGraphic.drawPipe(playerPhone.cell);
+                }
+            });
         }
         createUI() {
             let startBtn;
@@ -727,17 +919,50 @@ $(function () {
             startBtn.setInteractive().on('pointerup', () => {
                 pipeGame.startGame();
             });
+
+            let addBtn;
+            this.uiContainer.add(addBtn = this.add.image(150, 400, 'add_button'));
+            addBtn.setInteractive().on('pointerdown', () => {
+                addBtn.setTint(0xAAAAAA);
+
+            });
+            this.input.on('pointerup', () => {
+                addBtn.setTint(0xFFFFFF);
+            });
+            addBtn.setInteractive().on('pointerup', () => {
+                pipeGame.playerJoin();
+            });
         }
 
         addPlayer() {
             pipeGame.playerJoin();
         }
 
-        onPlayerAdded(playerID) {
+        onPlayerAdded({ playerID }) {
             let player;
+            this.playerContainer.add(player = new PlayerPhone(playerID, this, 250, 300));
+            this.playerPhones.push(player);
 
-            this.playerPhones.push(this.playerContainer.add(player = new PlayerPhone(this, 250, 300)));
+        }
 
+        onPlayerUpdated(data) {
+            console.log('onPlayerUpdated', data);
+
+            const { playerID, mode, cell } = data;
+            const {
+                x,
+                y,
+                pipeType,
+                pipeDir,
+                duration,
+                progress,
+                inList,
+                outList,
+            } = cell;
+
+            this.playerPhones[playerID].mode = mode;
+            this.playerPhones[playerID].cell = cell;
+            this.playerPhones[playerID].drawCell(cell);
         }
     }
 
@@ -756,6 +981,8 @@ $(function () {
 
     pipeGame.initMap();
     pipeGame.init();
+    //@ts-ignore: expose pipeGame
+    window.pipeGame = pipeGame;
 
     // setTimeout(() => {
     // }, 100);
