@@ -1,3 +1,4 @@
+
 //@ts-check
 /*global $: true, console: true */
 
@@ -22,6 +23,7 @@ $(function () {
     }
 
     // utils
+    // @ts-ignore: Adding funcitons to Array
     Array.prototype.transpose = function () {
         return this[0].map((col, i) => this.map(row => row[i]));
     };
@@ -71,20 +73,33 @@ $(function () {
     /* =========================================== */
 
     class Cell {
-        constructor(pipeGame, x, y) {
+        /**
+         * 
+         */
+        constructor({
+            pipeGame,
+            x,
+            y,
+            pipeType,
+            pipeDir,
+            duration,
+            progress,
+            inList,
+            outList,
+        }) {
             this.pipeGame = pipeGame;
             this.x = x;
             this.y = y;
 
             // state
-            this.pipeType = '';
-            this.pipeDir = 0;
+            this.pipeType = pipeType || '';
+            this.pipeDir = pipeDir != null ? pipeDir : 0;
 
-            this.duration = -1; // in ms
-            this.progress = 0; // in ms
+            this.duration = duration != null ? duration : -1; // in ms
+            this.progress = progress != null ? progress : 0; // in ms
 
-            this.inList = [];
-            this.outList = [];
+            this.inList = inList || [];
+            this.outList = outList || [];
         }
 
         getNeighbor(dx, dy) {
@@ -108,6 +123,7 @@ $(function () {
                 'T': [0, 1, 2],
                 'L': [0, 3],
                 '|': [1, 3],
+                '-': [0],
             };
             const dirs = dirIndexList[this.pipeType].map((i) => (i + this.pipeDir) % 4);
 
@@ -126,6 +142,7 @@ $(function () {
                 'T': [0, 1, 2],
                 'L': [0, 3],
                 '|': [1, 3],
+                '-': [0],
             };
             const dirs = dirIndexList[this.pipeType].map((i) => (i + this.pipeDir) % 4);
 
@@ -148,6 +165,7 @@ $(function () {
                 'T': [0, 1, 2],
                 'L': [0, 3],
                 '|': [1, 3],
+                '-': [0],
             };
 
             const dirs = dirIndexList[this.pipeType].map((i) => (i + this.pipeDir) % 4);
@@ -168,7 +186,16 @@ $(function () {
         }
     }
 
+    class Player {
+        constructor(i, { fluidDuration, fluidDurationMin }) {
+            this.playerID = i;
+            this.fluidDuration = fluidDuration;
+            this.fluidDurationMin = fluidDurationMin;
+        }
+    }
+
     const pipeGame = {
+        gameid: '',
         gridWidth: 25,
         gridHeight: 25,
 
@@ -178,6 +205,10 @@ $(function () {
         last: 0,
 
         ups: 10,
+        players: [],
+        samplePlayer: new Player(-1, { fluidDuration: 3000, fluidDurationMin: 1000 }),
+        connectCommand: { leftCell: null, leftOut: null, rightCell: null, rightIn: null },
+        playerJoined: new signals.Signal(),
 
         initMap() {
             this.map = (new Array(this.gridWidth)
@@ -185,13 +216,14 @@ $(function () {
                 .map((_, x) => {
                     return (new Array(this.gridHeight)
                         .fill(1)
-                        .map((_, y) => new Cell(this, x, y))
+                        // @ts-ignore: Optional parameters in pure JS
+                        .map((_, y) => new Cell({ pipeGame: this, x, y }))
                     );
                 }));
-            this.iterateMap((cell, x, y) => {
-                cell.pipeType = ['', '+', 'T', 'L', '|'][Math.floor(Math.random() * 5)];
-                cell.pipeDir = Math.floor(Math.random() * 4);
-            });
+            // this.iterateMap((cell, x, y) => {
+            //     cell.pipeType = ['', '+', 'T', 'L', '|', '-'][Math.floor(Math.random() * 5)];
+            //     cell.pipeDir = Math.floor(Math.random() * 4);
+            // });
         },
         iterateMap(callback) {
             this.map.forEach((col, x) => {
@@ -201,20 +233,23 @@ $(function () {
                 });
             })
         },
-        startGame() {
+        init() {
             const [xx, yy] = [
                 Math.floor(this.gridWidth / 2),
                 Math.floor(this.gridHeight / 2),
             ];
-            let cell;
-            this.fronts.add(cell = this.map[xx][yy]);
+            // let cell;
+            // this.fronts.add(cell = this.map[xx][yy]);
 
-            cell.pipeType = '+';
-            cell.activatePipe(Math.floor(0.4 * this.fluidDuration), this.fluidDuration, []);
-            cell.updateOutList();
-
+            // cell.pipeType = '-';
+            // cell.pipeDir = Math.floor(Math.random() * 4);
+            // cell.activatePipe(Math.floor(0.4 * this.fluidDuration), this.fluidDuration, []);
+            // cell.updateOutList();
+        },
+        startGame() {
             this.last = Date.now();
             setTimeout(() => this.updateGame(), 1000 / this.ups);
+
         },
 
         updateGame() {
@@ -241,9 +276,73 @@ $(function () {
 
             this.last = Date.now();
             setTimeout(this.updateGame.bind(this), 1000 / this.ups);
+        },
+
+        playerJoin() {
+            let player;
+            this.players.push(player = new Player(this.players.length, this.samplePlayer));
+            console.log('Player joined:', player.playerID);
+            this.playerJoined.dispatch({
+                playerID: player.playerID,
+            });
+        },
+
+        onPlayerClickEdge(playerID, edgeDir) {
+            // edgeDir = 0,1,2,3 (0=right, 1=bottom)
+            if (this.connectCommand.leftCell == null) {
+
+            } else if (this.connectCommand.rightCell == null) {
+
+            } else {
+
+            }
+        },
+        addCell(x, y, pipeType, pipeDir) {
+            const cell = this.map[x][y];
+
+            cell.pipeType = pipeType || '-';
+            cell.pipeDir = pipeDir;
+            cell.activatePipe(Math.floor(0.4 * this.fluidDuration), this.fluidDuration, []);
+            cell.updateOutList();
+            if (this.fronts.size <= 0) this.fronts.add(cell);
         }
     };
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    /* =========================================== */
+    // --- Phaser ---
+    /* =========================================== */
 
     // game class
     class Game extends Phaser.Game {
@@ -309,12 +408,12 @@ $(function () {
             this.setPosition(dispX + w / 2, dispY + h / 2);
 
             this.bg.clear();
-            let color = Phaser.Display.Color.HSLToColor(1, 0.5, 0.5).color;
+            let color = Phaser.Display.Color.HSLToColor(0.7, 0.5, 0.5).color;
             this.bg.lineStyle(1, color, 1);
             this.bg.strokeRect(-w / 2, -h / 2, w, h);
 
-            this.bg.fillStyle(color, 0.1);
-            this.bg.fillRect(-w / 2, -h / 2, w, h);
+            // this.bg.fillStyle(color, 0.1);
+            // this.bg.fillRect(-w / 2, -h / 2, w, h);
 
             const {
                 pipeType,
@@ -349,6 +448,9 @@ $(function () {
                 } break;
                 case '|': {
                     this.pipe.lineBetween(0, -h2, 0, h2);
+                } break;
+                case '-': {
+                    this.pipe.lineBetween(-pipeWidth2, 0, w2, 0);
                 } break;
             }
 
@@ -402,26 +504,75 @@ $(function () {
 
             });
             const outPercent = Math.max(0, Math.min(0.5, progress / duration - 0.5)) * 2;
+            const pipeWidth2b = (inList.length > 0 ? pipeWidth2 : -pipeWidth2);
 
             outList.forEach((input) => {
                 switch (input) {
                     case 0: { // to right
-                        this.fill.lineBetween(pipeWidth2, 0, pipeWidth2 + ((w2 - pipeWidth2) * outPercent), 0);
+                        this.fill.lineBetween(pipeWidth2b, 0, pipeWidth2b + ((w2 - pipeWidth2b) * outPercent), 0);
                     } break;
                     case 1: { // to bottom
-                        this.fill.lineBetween(0, pipeWidth2, 0, pipeWidth2 + ((h2 - pipeWidth2) * outPercent));
+                        this.fill.lineBetween(0, pipeWidth2b, 0, pipeWidth2b + ((h2 - pipeWidth2b) * outPercent));
                     } break;
                     case 2: { // to left
-                        this.fill.lineBetween(-pipeWidth2, 0, -pipeWidth2 - ((w2 - pipeWidth2) * outPercent), 0);
+                        this.fill.lineBetween(-pipeWidth2b, 0, -pipeWidth2b - ((w2 - pipeWidth2b) * outPercent), 0);
                     } break;
                     case 3: { // to top
-                        this.fill.lineBetween(0, -pipeWidth2, 0, -pipeWidth2 - ((h2 - pipeWidth2) * outPercent));
+                        this.fill.lineBetween(0, -pipeWidth2b, 0, -pipeWidth2b - ((h2 - pipeWidth2b) * outPercent));
                     } break;
                 }
             });
 
         }
     }
+
+    class PlayerPhone extends Phaser.GameObjects.Container {
+        constructor(scene, x, y, children) {
+            super(scene, x, y, children);
+            this.type = 'PlayerPhone';
+            this.add(this.bg = this.scene.add.image(0, 0, 'button'));
+            this.bg.setScale(1 / 2.5);
+        }
+        init() {
+            this.setInteractive(new Phaser.Geom.Rectangle(-10, -10, 20, 20), Phaser.Geom.Rectangle.Contains);
+
+            // this.scene.input.on('drag', function (pointer, gameObject, dragX, dragY) {
+            //     if (gameObject.type == 'PlayerPhone') {
+            //         gameObject.x = dragX;
+            //         gameObject.y = dragY;
+            //     }
+            // });
+            this.scene.input.on('drag', function (pointer, gameObject, dragX, dragY) {
+                if (gameObject.type == 'PlayerPhone') {
+                    gameObject.x = dragX;
+                    gameObject.y = dragY;
+                }
+            });
+            this.scene.input.on('dragend', function (pointer, gameObject, isOver) {
+                // debugger;
+                if (gameObject.type == 'PlayerPhone') {
+                    // gameObject.x = dragX;
+                    // gameObject.y = dragY;
+                    gameObject.x = Math.floor(gameObject.x / this.scene.cellWidth) * this.scene.cellWidth + this.scene.cellWidth / 2;
+                    gameObject.y = Math.floor(gameObject.y / this.scene.cellHeight) * this.scene.cellHeight + this.scene.cellHeight / 2;
+                }
+            });
+            this.scene.input.setDraggable(this);
+
+        }
+    }
+
+
+
+
+
+
+
+
+
+
+
+
 
 
     class MainScene extends Phaser.Scene {
@@ -430,12 +581,24 @@ $(function () {
             this.cellWidth = 20;
             this.cellHeight = 20;
             this.mapGraphics = null;
+            this.currentPlayer = -1;
+
+            this.mapContainer = null;
+            this.playerContainer = null;
+            this.uiContainer = null;
+            this.playerPhones = [];
+            pipeGame.playerJoined.add((...params) => this.onPlayerAdded(...params));
         }
 
         preload() {
-
+            this.load.image('start_button', './images/kenney/onscreencontrols/Sprites/shadedLight/shadedLight42.png');
+            this.load.image('button', './images/kenney/onscreencontrols/Sprites/shadedLight/shadedLight12.png');
         }
         create() {
+            this.mapContainer = this.add.container(0, 0).setName('mapContainer');
+            this.playerContainer = this.add.container(0, 0).setName('playerContainer');
+            this.uiContainer = this.add.container(0, 0).setName('uiContainer');
+
             this.cameras.main.setBackgroundColor('#AAAAAA');
             this.mapGraphics = (new Array(pipeGame.gridWidth)
                 .fill(1)
@@ -444,7 +607,7 @@ $(function () {
                         .fill(1)
                         .map((_, y) => {
                             const cellGraphic = new CellGraphic(this);
-                            this.add.existing(cellGraphic);
+                            this.mapContainer.add(cellGraphic);
                             cellGraphic.createUI();
                             return cellGraphic;
                         })
@@ -467,12 +630,25 @@ $(function () {
                     }
                 });
             });
+            // this.key1 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
+            // this.key2 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO);
+            // this.key3 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.THREE);
+            // this.key4 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FOUR);
+            // this.key5 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FIVE);
 
+            this.createUI();
 
+            this.addPlayer();
         }
 
         update(time, delta) {
             this.updateBoard();
+            // if (this.key1.isDown) this.currentPlayer = 1;
+            // if (this.key2.isDown) this.currentPlayer = 2;
+            // if (this.key3.isDown) this.currentPlayer = 3;
+            // if (this.key4.isDown) this.currentPlayer = 4;
+            // if (this.key5.isDown) this.currentPlayer = 5;
+
         }
 
         updateBoard() {
@@ -480,18 +656,45 @@ $(function () {
                 // console.log(x,y);
 
                 const cellGraphic = this.mapGraphics[x][y];
-                cellGraphic.updatePipeFill({
-                    // pipeType: ['', '+', 'T', 'L', '|'][Math.floor(Math.random() * 5)],
-                    // pipeDir: Math.floor(Math.random() * 4),
-                    inList: cell.inList,
-                    outList: cell.outList,
-                    duration: cell.duration,
-                    progress: cell.progress,
+                if (cell.isFull()) {
+                    cellGraphic.updatePipeFill({
+                        // pipeType: ['', '+', 'T', 'L', '|', '-'][Math.floor(Math.random() * 5)],
+                        // pipeDir: Math.floor(Math.random() * 4),
+                        inList: cell.inList,
+                        outList: cell.outList,
+                        duration: cell.duration,
+                        progress: cell.progress,
 
-                });
+                    });
+                }
+            });
+        }
+        createUI() {
+            let startBtn;
+            this.uiContainer.add(startBtn = this.add.image(250, 400, 'start_button'));
+            startBtn.setInteractive().on('pointerdown', () => {
+                startBtn.setTint(0xAAAAAA);
+
+            });
+            this.input.on('pointerup', () => {
+                startBtn.setTint(0xFFFFFF);
+            });
+            startBtn.setInteractive().on('pointerup', () => {
+                pipeGame.startGame();
             });
         }
 
+        addPlayer() {
+            pipeGame.playerJoin();
+        }
+
+        onPlayerAdded(playerID) {
+            let player;
+
+            this.playerPhones.push(this.playerContainer.add(player = new PlayerPhone(this, 250, 300)));
+
+            player.init();
+        }
     }
 
 
@@ -508,7 +711,7 @@ $(function () {
     var game = new Game(config);
 
     pipeGame.initMap();
-    pipeGame.startGame();
+    pipeGame.init();
 
     // setTimeout(() => {
     // }, 100);
@@ -529,7 +732,6 @@ $(function () {
         console.log('init handleSizeUpdate');
         handleSizeUpdate();
     }
-
 });
 
 
