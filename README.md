@@ -6,6 +6,8 @@ Real-time, Multiplayer Pipe Connection game using socket.io, jQuery and HTML5 ca
 ## Play Here
 
 http://dickson.md/extra-water/
+http://dickson.md/lab/extra-water/  (single player)
+
 
 Open this link and share the other link with your friend to start.
 
