@@ -520,6 +520,7 @@ function Game() {
                         pipeDir: Math.floor(Math.random() * 4),
                     }));
                     player.mode = 'rotate';
+                    this.playerPutCell({ playerID, cell: player.cell, cellX: 12, cellY: 12 });
                     this.dispatchPlayerChange();
                 } else {
                     player.setCell(new Cell({

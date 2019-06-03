@@ -56,7 +56,7 @@ $(function () {
                 roomID,
             } = data;
             pipeGame.playerID = playerID;
-            window.scene.onPlayerAdded({playerID});
+            window.scene.onPlayerAdded({ playerID });
         });
 
         socket.on('disconnect', function () {
@@ -101,7 +101,8 @@ $(function () {
         gridHeight: 25,
         map: [],
         startGame() {
-
+            console.log('startGame');
+            socket.emit("startGame");
         },
         // iterateMap() ?
         playerGetCell(playerID) {
@@ -267,7 +268,7 @@ $(function () {
 
             this.pipe.clear();
             let color = Phaser.Display.Color.HSLToColor(0.7, 0.1, 0.5).color;
-            const pipeWidth = 5;
+            const pipeWidth = w / 4;
             this.pipe.lineStyle(pipeWidth, color, 1);
             // console.log('pipeType', pipeType);
 
@@ -298,7 +299,7 @@ $(function () {
 
 
         initInteractive() {
-            this.setInteractive(new Phaser.Geom.Rectangle(-10, -10, 20, 20), Phaser.Geom.Rectangle.Contains, true);
+            // this.setInteractive(new Phaser.Geom.Rectangle(-10, -10, 20, 20), Phaser.Geom.Rectangle.Contains, true);
 
             // this.scene.input.on('drag',  (pointer, gameObject, dragX, dragY) =>{
             //     if (gameObject.type == 'PlayerPhone') {
@@ -341,7 +342,7 @@ $(function () {
                 progress,
 
             } = pipeData;
-            const pipeWidth = 5;
+            const pipeWidth = w / 4;
 
             this.fill.clear();
 
@@ -410,10 +411,25 @@ $(function () {
             this.playerID = playerID;
             this.fluidLevel = 0;
             this.cell = null;
-            this.add(this.bg = this.scene.add.image(0, 0, 'button'));
-            this.bg.setScale(1 / 2.5);
+            // this.add(this.bg = this.scene.add.image(0, 0, 'button'));
+            this.add(this.bg = this.scene.add.graphics({
+                x: 0,
+                y: 0,
+                lineStyle: {
+                    width: 5,
+                    color: 0x000000,
+                    alpha: 1
+                },
+                fillStyle: {
+                    color: 0xffffff,
+                    alpha: 1
+                },
+            }));
+            this.bg.fillRect(-250, -250, 500, 500);
+            this.bg.strokeRect(-250, -250, 500, 500);
+            // this.bg.setScale(1 / 2.5);
 
-            this.add(this.cellGraphic = new CellGraphic(0, 0, 20, 20, scene, 0, 0));
+            this.add(this.cellGraphic = new CellGraphic(0, 0, 500, 500, scene, 0, 0));
 
             this.cellGraphic.createUI();
             // this.cellGraphic.init(); // don't init because don't want interactive
@@ -428,19 +444,12 @@ $(function () {
             //         gameObject.y = dragY;
             //     }
             // });
-            this.scene.input.on('dragstart', (pointer, gameObject, dragX, dragY) => {
-                if (gameObject.type == 'PlayerPhone') {
-                    const playerPhone = gameObject;
-                    console.log('dragstart', playerPhone.mode);
-                    if ((!playerPhone.cell || playerPhone.cell.x == null) || playerPhone.cell.progress >= playerPhone.cell.duration) {
-                        if (playerPhone.mode === 'idle') {
-                            pipeGame.playerGetCell(playerPhone.playerID);
-                        } else if (playerPhone.mode === 'cell') {
-                            pipeGame.playerPickUpCell(playerPhone.playerID);
-                        }
-                    }
-                }
-            });
+            // this.scene.input.on('dragstart', (pointer, gameObject, dragX, dragY) => {
+            //     if (gameObject.type == 'PlayerPhone') {
+            //         const playerPhone = gameObject;
+            //         console.log('dragstart', playerPhone.mode);
+            //     }
+            // });
             this.scene.input.on('drag', (pointer, gameObject, dragX, dragY) => {
                 if (gameObject.type == 'PlayerPhone') {
                     const playerPhone = gameObject;
@@ -702,13 +711,20 @@ $(function () {
                 addBtn.setTint(0xFFFFFF);
             });
             addBtn.setInteractive().on('pointerup', () => {
-                pipeGame.playerJoin();
+                const playerPhone = this.playerPhones[pipeGame.playerID];
+                if ((!playerPhone.cell || playerPhone.cell.x == null) || playerPhone.cell.progress >= playerPhone.cell.duration) {
+                    if (playerPhone.mode === 'idle') {
+                        pipeGame.playerGetCell(playerPhone.playerID);
+                    } else if (playerPhone.mode === 'cell') {
+                        pipeGame.playerPickUpCell(playerPhone.playerID);
+                    }
+                }
             });
 
             this.uiContainer.add(this.debugText = this.add.text(500, 0, 'debug_mode', { color: 'black', align: 'right' }));
             this.debugText.setOrigin(1, 0);
 
-            this.hudContainer.add(this.scoreText = this.add.text(0, 0, '--', { color: 'black' }));
+            this.hudContainer.add(this.scoreText = this.add.text(20, 20, '--', { fontSize: '24px', color: 'black' }));
             this.hudContainer.add(this.gameOverText = this.add.text(250, 250, 'Game Over', {
                 color: 'black',
                 fontSize: '64px',
@@ -720,7 +736,7 @@ $(function () {
 
         onPlayerAdded({ playerID }) {
             let player;
-            this.playerContainer.add(player = new PlayerPhone(playerID, this, 250, 300));
+            this.playerContainer.add(player = new PlayerPhone(playerID, this, 250, 250));
             this.playerPhones[playerID] = player;
 
         }
@@ -740,12 +756,16 @@ $(function () {
             //     outList,
             // } = cell;
 
-            if (score && ('' + score) != this.scoreText.text) {
-                this.scoreText.setText(score);
+            if (score && ('Score: ' + score) != this.scoreText.text) {
+                this.scoreText.setText(`Score: ${score}`);
                 this.scoreHistory.push(score);
                 // console.log('scoreHistory', this.scoreHistory);
             }
 
+
+            if (playerID === 0 && cell && cell.x != null) {
+                this.isTutorial = false;
+            }
             if (playerID !== pipeGame.playerID) return;
 
             this.playerPhones[playerID].mode = mode;

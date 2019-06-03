@@ -186,6 +186,10 @@ function init() {
         var room = roomManager.getRoomByToken(token);
 
 
+        socket.on("startGame", function () {
+            console.log('startGame');
+            room.game.startGame();
+        });
         socket.on("playerGetCell", function (playerID) {
             console.log('playerGetCell', playerID);
             room.game.playerGetCell(playerID);
