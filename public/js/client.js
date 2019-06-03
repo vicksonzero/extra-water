@@ -1,4 +1,3 @@
-
 //@ts-check
 /*global $: true, console: true */
 
@@ -29,292 +28,96 @@ $(function () {
     };
 
 
-    var socket = io.connect(
-        '127.0.0.1:3010',
-        {
-            query: [
-                "&token=" + params.token[0],
-            ].join(""),
-            reconnection: true,
-            reconnectionDelay: 1000,
-            reconnectionDelayMax: 5000,
-            reconnectionAttempts: 5,
-        }
-    );
+    function connectSocket() {
 
-
-    socket.on('connect', function () {
-        console.log('connected as ' + socket.id);
-    });
-
-    socket.on('init', function (data) {
-        // console.log('init()');
-        // updateRoomToken();
-    });
-
-    socket.on('disconnect', function () {
-        console.log('disconnected');
-        $('#invite').hide();
-        $('#instructions').hide();
-        $('#disconnected').show()
-    });
-
-    socket.on('reconnecting', function (trialCount) {
-        console.log('Reconnect #' + trialCount + '...');
-    });
-
-    socket.on('state', function (data) {
-        // console.log(data);
-
-    });
-
-    /* =========================================== */
-    // --- Global & Default Variables ---
-    /* =========================================== */
-
-    class Cell {
-        /**
-         * 
-         */
-        constructor(params) {
-            const {
-                pipeGame,
-                x,
-                y,
-                pipeType,
-                pipeDir,
-                duration,
-                progress,
-                inList,
-                outList,
-            } = params;
-            this.pipeGame = pipeGame;
-            this.x = x;
-            this.y = y;
-
-            // state
-            this.pipeType = pipeType || '';
-            this.pipeDir = pipeDir != null ? pipeDir : 0;
-
-            this.duration = duration != null ? duration : -1; // in ms
-            this.progress = progress != null ? progress : 0; // in ms
-
-            this.inList = inList || [];
-            this.outList = outList || [];
-        }
-
-        getNeighbor(dx, dy) {
-            return ((this.pipeGame.map[this.x + dx] || {})[this.y + dy] || {});
-        }
-
-        updateProgress(dt) {
-            // console.log('updateProgress', this.pipeType, this.progress);
-
-            if (this.pipeType === '-') this.progress = Math.max(Math.floor(0.4 * this.duration), this.progress);
-            if (this.progress < this.duration) {
-                this.progress += dt;
+        var socket = window.socket = io.connect(
+            '127.0.0.1:3010',
+            {
+                query: [
+                    "&token=" + params.token[0],
+                ].join(""),
+                reconnection: true,
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 5000,
+                reconnectionAttempts: 5,
             }
-        }
-
-        isFull() {
-            if (this.duration < 0) return null;
-            return this.progress >= this.duration;
-        }
-
-        canInputFrom(inDir) {
-            const dirIndexList = {
-                '+': [0, 1, 2, 3],
-                'T': [0, 1, 2],
-                'L': [0, 3],
-                '|': [1, 3],
-                '-': [0],
-            };
-            const dirs = dirIndexList[this.pipeType].map((i) => (i + this.pipeDir) % 4);
-
-            return dirs.includes(inDir);
-        }
-
-        activatePipe(progress, duration, inList) {
-            this.progress = Math.max(this.progress, progress);
-            this.duration = duration;
-            this.inList = Array.from(new Set(this.inList.concat(inList)));
-        }
-
-        updateOutList() {
-            const dirIndexList = {
-                '+': [0, 1, 2, 3],
-                'T': [0, 1, 2],
-                'L': [0, 3],
-                '|': [1, 3],
-                '-': [0],
-            };
-            const dirs = dirIndexList[this.pipeType].map((i) => (i + this.pipeDir) % 4);
+        );
 
 
-            // const possibleOutList = dirs.filter((i) => !this.inList.includes(i));
-            this.outList = dirs.filter((i) => !this.inList.includes(i));
-            // console.log('updateOutList', this.x, this.y, this.pipeType, this.pipeDir, dirs, this.outList);
-        }
+        socket.on('connect', function () {
+            console.log('connected as ' + socket.id);
+        });
 
+        socket.on('init', function (data) {
+            console.log('init', data);
+            // updateRoomToken();
+            const {
+                playerID,
+                roomID,
+            } = data;
+            pipeGame.playerID = playerID;
+            window.scene.onPlayerAdded({playerID});
+        });
 
-        getDirs() {
+        socket.on('disconnect', function () {
+            console.log('disconnected');
+            $('#invite').hide();
+            $('#instructions').hide();
+            $('#disconnected').show()
+        });
 
-            const dirIndexList = {
-                '+': [0, 1, 2, 3],
-                'T': [0, 1, 2],
-                'L': [0, 3],
-                '|': [1, 3],
-                '-': [0],
-            };
+        socket.on('reconnecting', function (trialCount) {
+            console.log('Reconnect #' + trialCount + '...');
+        });
 
-            const dirs = dirIndexList[this.pipeType].map((i) => (i + this.pipeDir) % 4);
+        socket.on('playerJoined', function ({ map, playerID }) {
+            console.log('socket playerJoined', { mapL: map.length, playerID });
 
-            return dirs;
-        }
+            pipeGame.map = map;
+            pipeGame.playerJoined.dispatch({ playerID });
+        });
+        socket.on('playerUpdated', function (data) {
+            console.log('socket playerUpdated', data);
+            const { map } = data;
+            pipeGame.map = map;
+            pipeGame.playerUpdated.dispatch(data);
 
-        getDeltas() {
-            const deltas = [
-                [1, 0],
-                [0, 1],
-                [-1, 0],
-                [0, -1],
-            ];
-            return this.getDirs().map((i) => deltas[i]);
-        }
+        });
+        socket.on('scoreUpdated', function (playerID, addition, totalScore) {
+            console.log('socket scoreUpdated', playerID, addition, totalScore);
+            pipeGame.scoreUpdated.dispatch(playerID, addition, totalScore);
 
-        getNeighbors() {
-            return this.getDeltas().map((delta) => this.getNeighbor(...delta));
-        }
-
-        canCompleteCycle() {
-            const deltas = [
-                [1, 0],
-                [0, 1],
-                [-1, 0],
-                [0, -1],
-            ];
-
-            // debugger;
-            return this.getDirs().filter((dir) => {
-                const delta = deltas[dir];
-                const neighbor = this.getNeighbor(...delta);
-
-                return neighbor.isFull() && neighbor.getDirs().some((d) => (d + 2) % 4 === dir);
-            }).length >= 2;
-        }
-
-        pourToNeighbors(newDuration, fronts, players) {
-            const deltas = [
-                [1, 0],
-                [0, 1],
-                [-1, 0],
-                [0, -1],
-            ];
-
-
-            const dirs = this.getDirs();
-
-            dirs.forEach((i) => {
-                const delta = deltas[i];
-                const cell = this.getNeighbor(...delta);
-                if (!cell) return;
-                if (cell.pipeType === '') return;
-
-                const inDir = (i + 2) % 4;
-                if (cell.isFull()) return;
-                if (!cell.canInputFrom(inDir)) return;
-
-                const player = players.find((player) => {
-                    return (player.mode === 'cell' &&
-                        player.cellX === cell.x && player.cellY === cell.y
-                    );
-                });
-                player.updateFluidDuration();
-                cell.activatePipe(this.progress - this.duration, player.fluidDuration, [(i + 2) % 4]);
-                fronts.add(cell);
-            })
-        }
+        });
+        socket.on('gameIsOver', function () {
+            console.log('socket gameIsOver');
+            pipeGame.gameIsOver.dispatch();
+        });
     }
 
-    class Player {
-        constructor(i, { fluidTable }) {
-            this.playerID = i;
-            this.fluidTable = fluidTable.slice();
-            this.fluidDuration = 3000;
-            this.fluidLevel = 0;
-            this.mode = 'idle'; // 'idle', 'rotate', 'cell'
-            this.cell = null;
-            this.cellX = null;
-            this.cellY = null;
-        }
 
-        setViewXY(cellX, cellY) {
-            this.cellX = cellX;
-            this.cellY = cellY;
-        }
-
-        setCell(cell) {
-            this.cell = cell;
-        }
-
-        addFluidLevel(amt) {
-            this.fluidLevel += amt;
-            this.fluidLevel = Math.max(0, this.fluidLevel);
-            this.updateFluidDuration();
-        }
-
-        updateFluidDuration() {
-            const { count, duration } = this.fluidTable.find(({ count, duration }) => count >= this.fluidLevel);
-            this.fluidDuration = duration;
-        }
-    }
-
-    const pipeGame = {
-        gameid: '',
+    const pipeGame = window.pipeGame = {
+        playerID: -1,
         gridWidth: 25,
         gridHeight: 25,
-
         map: [],
-        fronts: new Set(),
-        fluidDuration: 5000,
-        last: 0,
+        startGame() {
 
-        ups: 10,
-        players: [],
-        samplePlayer: new Player(-1, {
-            fluidTable: [
-                { count: 0, duration: 5000 },
-                { count: 2, duration: 4000 },
-                { count: 6, duration: 3000 },
-                { count: 10, duration: 2000 },
-                { count: 15, duration: 1500 },
-                { count: 20, duration: 1000 },
-                { count: 30, duration: 500 },
-            ],
-        }),
-        connectCommand: { leftCell: null, leftOut: null, rightCell: null, rightIn: null },
-        playerJoined: new signals.Signal(),
-        playerUpdated: new signals.Signal(),
-        scoreUpdated: new signals.Signal(),
-        gameIsOver: new signals.Signal(),
-
-        score: 0,
-
-        initMap() {
-            this.map = (new Array(this.gridWidth)
-                .fill(1)
-                .map((_, x) => {
-                    return (new Array(this.gridHeight)
-                        .fill(1)
-                        // @ts-ignore: Optional parameters in pure JS
-                        .map((_, y) => new Cell({ pipeGame: this, x, y }))
-                    );
-                }));
-            // this.iterateMap((cell, x, y) => {
-            //     cell.pipeType = ['', '+', 'T', 'L', '|', '-'][Math.floor(Math.random() * 5)];
-            //     cell.pipeDir = Math.floor(Math.random() * 4);
-            // });
         },
+        // iterateMap() ?
+        playerGetCell(playerID) {
+            console.log('playerGetCell', playerID);
+            socket.emit("playerGetCell", playerID);
+        },
+        playerPickUpCell(playerID) {
+            socket.emit("playerPickUpCell", playerID);
+        },
+        playerPutCell({ playerID, cell, cellX, cellY }) {
+            socket.emit("playerPutCell", { playerID, cell, cellX, cellY });
+        },
+        playerRotate(playerID) {
+            socket.emit("playerRotate", playerID);
+        },
+
         iterateMap(callback) {
             this.map.forEach((col, x) => {
                 col.forEach((cell, y) => {
@@ -323,286 +126,11 @@ $(function () {
                 });
             })
         },
-        init() {
-            const [xx, yy] = [
-                Math.floor(this.gridWidth / 2),
-                Math.floor(this.gridHeight / 2),
-            ];
-            // let cell;
-            // this.fronts.add(cell = this.map[xx][yy]);
-
-            // cell.pipeType = '-';
-            // cell.pipeDir = Math.floor(Math.random() * 4);
-            // cell.activatePipe(Math.floor(0.4 * this.fluidDuration), this.fluidDuration, []);
-            // cell.updateOutList();
-        },
-
-        startGame() {
-            this.last = Date.now();
-            setTimeout(() => this.updateFluid(), 1000 / this.ups);
-        },
-
-        updateFluid() {
-            const delta = Date.now() - this.last;
-            // console.log('updateGame', delta);
-            this.fronts.forEach((cell) => {
-                if (cell.isFull()) this.fronts.delete(cell);
-            });
-            this.fronts.forEach((cell) => {
-                cell.updateProgress(delta);
-                // console.log(cell);
-
-            });
-            this.updateScore();
-            this.fronts.forEach((cell) => {
-                // console.log(cell.isFull());
-
-                if (cell.isFull()) {
-                    cell.pourToNeighbors(this.fluidDuration, this.fronts, this.players);
-
-                    const player = this.players.find((player) => {
-                        return (player.mode === 'cell' &&
-                            player.cellX === cell.x && player.cellY === cell.y
-                        );
-                    });
-                    player.mode = 'idle';
-                }
-            });
-            this.fronts.forEach((cell) => {
-                cell.updateOutList();
-            });
-
-            this.players.forEach((player) => {
-                if (player.mode === 'idle') {
-
-                    player.addFluidLevel(-delta / 1000 / 5 * 0.8);
-                }
-            })
-
-            this.dispatchPlayerChange();
-
-            if (this.fronts.size > 0) {
-                this.last = Date.now();
-                setTimeout(this.updateFluid.bind(this), 1000 / this.ups);
-            } else {
-                console.log('game over');
-                this.gameOver();
-            }
-        },
-
-        updateScore() {
-            this.fronts.forEach((cell) => {
-                let score = 0;
-                const playerID = this.players.findIndex((player) => {
-                    return (player.mode === 'cell' &&
-                        player.cellX === cell.x && player.cellY === cell.y
-                    );
-                });
-                // console.log(`Player-${playerID}`);
-
-                if (cell.isFull()) {
-                    score += 1;
-                    const neighbours = cell.getNeighbors();
-                    // debugger;
-                    // console.log('updateScore', playerID, neighbours);
-
-                    if (cell.canCompleteCycle()) {
-                        score += 4;
-                    }
-                    this.players[playerID].addFluidLevel(1);
-                    this.addScore(playerID, score);
-
-                }
-            });
-        },
-
-        dispatchPlayerChange() {
-            this.players.forEach((player) => {
-                if (player.mode === 'cell') {
-                    const cell = this.map[player.cellX][player.cellY];
-                    // console.log('dispatchPlayerChange cell');
-
-                    this.playerUpdated.dispatch({
-                        playerID: player.playerID,
-                        fluidLevel: player.fluidLevel,
-                        mode: player.mode,
-                        score: this.score,
-                        cell: {
-                            x: cell.x,
-                            y: cell.y,
-                            pipeType: cell.pipeType,
-                            pipeDir: cell.pipeDir,
-                            duration: cell.duration,
-                            progress: cell.progress,
-                            inList: cell.inList.slice(),
-                            outList: cell.outList.slice(),
-                        },
-                    });
-                } else if (player.mode === 'rotate') {
-                    const cell = player.cell;
-                    // console.log('dispatchPlayerChange rotate');
-
-                    this.playerUpdated.dispatch({
-                        playerID: player.playerID,
-                        fluidLevel: player.fluidLevel,
-                        mode: player.mode,
-                        score: this.score,
-                        cell: {
-                            x: cell.x,
-                            y: cell.y,
-                            pipeType: cell.pipeType,
-                            pipeDir: cell.pipeDir,
-                            duration: cell.duration,
-                            progress: cell.progress,
-                            inList: cell.inList.slice(),
-                            outList: cell.outList.slice(),
-                        },
-                    });
-                } else if (player.mode === 'idle') {
-                    const cell = player.cell;
-                    // console.log('dispatchPlayerChange idle');
-
-                    this.playerUpdated.dispatch({
-                        playerID: player.playerID,
-                        fluidLevel: player.fluidLevel,
-                        mode: player.mode,
-                        score: this.score,
-                        // cell: {
-                        //     x: cell.x,
-                        //     y: cell.y,
-                        //     pipeType: cell.pipeType,
-                        //     pipeDir: cell.pipeDir,
-                        //     duration: cell.duration,
-                        //     progress: cell.progress,
-                        //     inList: cell.inList.slice(),
-                        //     outList: cell.outList.slice(),
-                        // },
-                    });
-                }
-            });
-        },
-
-        playerJoin() {
-            let player;
-            this.players.push(player = new Player(this.players.length, this.samplePlayer));
-            console.log('Player joined:', player.playerID);
-            this.playerJoined.dispatch({
-                playerID: player.playerID,
-            });
-        },
-
-        playerPutCell({ playerID, cell, cellX, cellY }) {
-            const player = this.players[playerID];
-            if (!player) throw new Error('playerPutCell: player not found: ' + playerID);
-
-            player.updateFluidDuration();
-            console.log('playerPutCell', playerID, cell, cellX, cellY, player.fluidDuration);
-            const currentCell = this.map[cellX][cellY];
-            if (currentCell.progress <= 0 || currentCell.duration < 0) {
-                this.addCell(cellX, cellY, cell.pipeType, cell.pipeDir, player.fluidDuration);
-                player.cellX = cellX;
-                player.cellY = cellY;
-                player.mode = 'cell';
-                this.dispatchPlayerChange();
-            } else {
-                console.log('playerPutCell: existing cell');
-
-                player.mode = 'cell';
-                this.dispatchPlayerChange();
-
-            }
-        },
-
-        onPlayerClickEdge(playerID, edgeDir) {
-            // edgeDir = 0,1,2,3 (0=right, 1=bottom)
-            if (this.connectCommand.leftCell == null) {
-
-            } else if (this.connectCommand.rightCell == null) {
-
-            } else {
-
-            }
-        },
-        playerPickUpCell(playerID) {
-            const player = this.players[playerID];
-            if (!player) throw new Error('playerPickUpCell: player not found: ' + playerID);
-
-            // debugger;
-            const cell = (this.map[player.cellX] || {})[player.cellY];
-            if (!cell) throw new Error('playerPickUpCell: cell not found: ' + player.cellX + ',' + player.cellY);
-
-
-            console.log('playerPickUpCell', playerID, player.mode, cell.isFull());
-
-            if (player.mode === 'cell') {
-                if (cell.isFull()) {
-                    console.log('playerPickUpCell isFull');
-
-                    player.mode = 'idle';
-                    this.playerGetCell(playerID);
-                }
-            }
-        },
-        playerGetCell(playerID) {
-            const player = this.players[playerID];
-            if (!player) throw new Error('playerGetCell: player not found: ' + playerID);
-
-            console.log('playerGetCell', playerID);
-
-            if (player.mode === 'idle') {
-                if (this.fronts.size <= 0) {
-                    player.setCell(new Cell({
-                        pipeGame: this,
-                        pipeType: '-',
-                        pipeDir: Math.floor(Math.random() * 4),
-                    }));
-                    player.mode = 'rotate';
-                    this.dispatchPlayerChange();
-                } else {
-                    player.setCell(new Cell({
-                        pipeGame: this,
-                        pipeType: ['+', 'T', 'L', '|'][Math.floor(Math.random() * 4)],
-                        pipeDir: Math.floor(Math.random() * 4),
-                    }));
-                    player.mode = 'rotate';
-                    this.dispatchPlayerChange();
-                }
-            }
-        },
-
-        playerRotate(playerID) {
-            const player = this.players[playerID];
-            if (!player) throw new Error('playerGetCell: player not found: ' + playerID);
-            console.log('playerRotate', playerID);
-
-            if (player.mode === 'rotate') {
-                player.cell.pipeDir += 1;
-                player.cell.pipeDir %= 4;
-                this.dispatchPlayerChange();
-            }
-        },
-
-        addCell(x, y, pipeType, pipeDir, fluidDuration) {
-            const cell = this.map[x][y];
-
-            cell.pipeType = pipeType || '-';
-            cell.pipeDir = pipeDir;
-            cell.activatePipe(0, fluidDuration, []);
-            cell.updateOutList();
-            if (this.fronts.size <= 0) this.fronts.add(cell);
-        },
-
-        addScore(playerID, score) {
-            this.score += score;
-            console.log('addScore', this.score);
-
-            this.scoreUpdated.dispatch(playerID, score, this.score);
-        },
-        gameOver() {
-            this.gameIsOver.dispatch(this.score);
-        }
+        playerJoined: new signals.Signal(),
+        playerUpdated: new signals.Signal(),
+        scoreUpdated: new signals.Signal(),
+        gameIsOver: new signals.Signal(),
     };
-
 
 
 
@@ -1035,11 +563,11 @@ $(function () {
             this.playerContainer = null;
             this.uiContainer = null;
             this.hudContainer = null;
-            this.playerPhones = [];
-            pipeGame.playerJoined.add((...params) => this.onPlayerAdded(...params));
+            this.playerPhones = {};
+            // pipeGame.playerJoined.add((...params) => this.onPlayerAdded(...params));
             pipeGame.playerUpdated.add((...params) => this.onPlayerUpdated(...params));
             pipeGame.scoreUpdated.add((...params) => this.onScoreUpdated(...params));
-            pipeGame.gameIsOver.add((...params) => this.onGameIsOver(...params));
+            pipeGame.gameIsOver.add((...params) => this.onGameIsOver());
 
 
             this.debugText = null;
@@ -1080,10 +608,11 @@ $(function () {
                     );
                 }));
             this.mapContainer.bringToTop(this.mapGraphics[12][12]);
-            pipeGame.iterateMap((cell, x, y) => {
-                const cellGraphic = this.mapGraphics[x][y];
-                cellGraphic.setPosition(x * this.cellWidth + this.cellWidth / 2, y * this.cellHeight + this.cellHeight / 2);
-                cellGraphic.init();
+            this.mapGraphics.forEach((col, x) => {
+                col.forEach((cellGraphic, y) => {
+                    cellGraphic.setPosition(x * this.cellWidth + this.cellWidth / 2, y * this.cellHeight + this.cellHeight / 2);
+                    cellGraphic.init();
+                })
             });
             // this.key1 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
             // this.key2 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO);
@@ -1101,26 +630,31 @@ $(function () {
                     }
                 }
             });
-
-            this.addPlayer();
+            connectSocket();
         }
 
         update(time, delta) {
             this.updateBoard();
+            // this.updatePlayerCell();
             // if (this.key1.isDown) this.currentPlayer = 1;
             // if (this.key2.isDown) this.currentPlayer = 2;
             // if (this.key3.isDown) this.currentPlayer = 3;
             // if (this.key4.isDown) this.currentPlayer = 4;
             // if (this.key5.isDown) this.currentPlayer = 5;
-            this.debugText.setText(this.playerPhones.map(p => p.toString()).join('\n'));
+
+            // this.debugText.setText(this.playerPhones.map(p => p.toString()).join('\n'));
         }
 
         updateBoard() {
+            function isFull(cell) {
+                if (cell.duration < 0) return null;
+                return cell.progress >= cell.duration;
+            }
             pipeGame.iterateMap((cell, x, y) => {
                 // console.log(x,y);
 
                 const cellGraphic = this.mapGraphics[x][y];
-                if (cell.isFull()) {
+                if (isFull(cell)) {
                     cellGraphic.updatePipeFill({
                         // pipeType: ['', '+', 'T', 'L', '|', '-'][Math.floor(Math.random() * 5)],
                         // pipeDir: Math.floor(Math.random() * 4),
@@ -1132,12 +666,15 @@ $(function () {
                     });
                 }
             });
+            this.updatePlayerCell();
+        }
 
-            this.playerPhones.forEach((playerPhone) => {
+        updatePlayerCell() {
+            for (const [_, playerPhone] of Object.entries(this.playerPhones)) {
                 if (playerPhone.cell) {
                     playerPhone.cellGraphic.drawPipe(playerPhone.cell);
                 }
-            });
+            }
         }
         createUI() {
             let startBtn;
@@ -1181,14 +718,10 @@ $(function () {
             this.gameOverText.setVisible(false);
         }
 
-        addPlayer() {
-            pipeGame.playerJoin();
-        }
-
         onPlayerAdded({ playerID }) {
             let player;
             this.playerContainer.add(player = new PlayerPhone(playerID, this, 250, 300));
-            this.playerPhones.push(player);
+            this.playerPhones[playerID] = player;
 
         }
 
@@ -1213,6 +746,7 @@ $(function () {
                 // console.log('scoreHistory', this.scoreHistory);
             }
 
+            if (playerID !== pipeGame.playerID) return;
 
             this.playerPhones[playerID].mode = mode;
             this.playerPhones[playerID].fluidLevel = fluidLevel;
@@ -1262,13 +796,6 @@ $(function () {
     // when the page is loaded, create our game instance
     var game = new Game(config);
 
-    pipeGame.initMap();
-    pipeGame.init();
-    //@ts-ignore: expose pipeGame
-    window.pipeGame = pipeGame;
-
-    // setTimeout(() => {
-    // }, 100);
     function handleSizeUpdate(event) {
         const ww = window.innerWidth / 500;
         const hh = window.innerHeight / 500;

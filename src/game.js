@@ -5,930 +5,572 @@ var Signal = require('signals');
 // $(function () {
 // "use strict";
 
-var randtoken = require('rand-token');
-var tokenCharSet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890';
 
 
 function Game() {
-  /* =========================================== */
-  // --- Global & Default Variables ---
-  /* =========================================== */
-  var signals = {
-    updated: new Signal()
-  };
 
-  var globals = {
-    firstClick: true,
-    gameover: false,
-    canvas: null,
-    context: null,
-    totalMines: 0,
-    totalFlags: 0,
-    elapsedTime: 0,
-    clock: '',
-    restart: '',
-    mineMap: '',
-    flagMap: '',
-    revealedMap: '',
-    currentAnimation: '',
-    previous: new Array(2),
-    squaresX: '',
-    squaresY: '',
-    players: [
-      {
-        name: 'A',
-        token: randtoken.generate(5, tokenCharSet),
-        score: 0,
-        bombs: 1
-      },
-      {
-        name: 'B',
-        token: randtoken.generate(5, tokenCharSet),
-        score: 0,
-        bombs: 1
-      },
-    ],
-    turn: 0
-  };
+    /* =========================================== */
+    // --- Global & Default Variables ---
+    /* =========================================== */
 
-  var defaults = {
-    difficulty: 0,
-    mineCount: 51,
-    celSize: 20,
-    width: 400,
-    height: 400,
-    background: 'white',
-    font: '14px Arial',
-    celColor: '#dadada',
-    celStroke: 'white',
-    celRadius: 5,
-    mineImg: 'images/mine.png',
-    flagImg: 'images/flag.png',
-    newPlayer: function (name) {
-      return {
-        name: name,
-        isOnline: false,
-        token: randtoken.generate(5, tokenCharSet),
-        score: 0,
-        bombs: 1
-      };
-    }
-  };
+    class Cell {
+        /**
+         * 
+         */
+        constructor(params) {
+            const {
+                pipeGame,
+                x,
+                y,
+                pipeType,
+                pipeDir,
+                duration,
+                progress,
+                inList,
+                outList,
+            } = params;
+            this.pipeGame = pipeGame;
+            this.x = x;
+            this.y = y;
 
-  var containers = {
-    // In core.init(), we add containers.
-  };
+            // state
+            this.pipeType = pipeType || '';
+            this.pipeDir = pipeDir != null ? pipeDir : 0;
 
-  /* =========================================== */
-  // --- Core Functions ---
-  /* =========================================== */
+            this.duration = duration != null ? duration : -1; // in ms
+            this.progress = progress != null ? progress : 0; // in ms
 
-  var core = {
-
-    /* ------------------------------------------- */
-    // -- Initiate function
-    // -- Get the canvas and context, as well as
-    // -- attach some listeners.
-    // -- @return void
-    /* ------------------------------------------- */
-
-    init: function () {
-      // globals.canvas = $('#board');
-      // globals.context = globals.canvas[0].getContext("2d");
-      // globals.context.background = defaults.background;
-
-      // var ratio = this.hiDPIRatio();
-      // if (ratio !== 1) {
-      //   var originalWidth = globals.canvas[0].width;
-      //   var originalHeight = globals.canvas[0].height;
-
-      //   globals.canvas[0].width = originalWidth * ratio;
-      //   globals.canvas[0].height = originalHeight * ratio;
-      //   globals.canvas.css({
-      //     width: originalWidth + "px",
-      //     height: originalHeight + "px"
-      //   });
-
-      //   globals.context.scale(ratio, ratio);
-      // }
-
-      // globals.context.font = defaults.font;
-
-      // defaults.width = globals.canvas.width();
-      // globals.squaresX = Math.floor(defaults.width / defaults.celSize);
-      // globals.squaresY = Math.floor(defaults.height / defaults.celSize);
-      globals.squaresX = 16;
-      globals.squaresY = 16;
-      console.log(globals.squaresX, globals.squaresY);
-
-      globals.mineMap = new Array(globals.squaresX);
-      globals.flagMap = new Array(globals.squaresX);
-      globals.revealedMap = new Array(globals.squaresX);
-
-      // buttons
-      // containers.flags = $('#flags');
-      // containers.mines = $('#mines');
-      // containers.status = $('#status');
-      // containers.time = $('#time');
-      // containers.msg = $('#msg');
-      // containers.scoreboard = $('#scoreboard');
-
-      // containers.easy = $('#easybtn');
-      // containers.medium = $('#mediumbtn');
-      // containers.insane = $('#insanebtn');
-      // containers.switchscreens = $('#switchscreens');
-      // containers.reset = $('#reset');
-
-      // var difarr = { 9: containers.easy, 6: containers.medium, 3: containers.insane };
-
-      // // button events
-      // $.each(difarr, function (index, value) {
-      //   value.on({
-      //     click: function () {
-      //       defaults.difficulty = index;
-      //       util.switchScreens();
-      //     }
-      //   });
-      // });
-
-      // containers.switchscreens.on({
-      //   click: function () {
-      //     util.switchScreens();
-      //   }
-      // });
-
-      // containers.reset.on({
-      //   click: function () {
-      //     core.reset();
-      //   }
-      // });
-
-      // $('.gamescreen').hide();
-
-      // canvas events
-      // Attach some listeners, at this point only mousedown
-      // globals.canvas.on({
-      //   mouseup: function (e) {
-      //     action.click(e);
-      //   },
-      //   mousemove: function (e) {
-      //     action.hover(e);
-      //   }
-      // });
-
-      // Some quick preloading of the mine and flag images
-      // var images = new Array();
-      // images[0] = new Image();
-      // images[0].src = defaults.mineImg;
-      // images[1] = new Image();
-      // images[1].src = defaults.flagImg;
-
-      // Initialize the board
-      core.setup();
-
-      //animation.arrow();
-
-    },
-
-    hiDPIRatio: function () {
-      // var devicePixelRatio, backingStoreRatio;
-
-      // devicePixelRatio = window.devicePixelRatio || 1;
-      // backingStoreRatio = globals.context.webkitBackingStorePixelRatio ||
-      //   globals.context.mozBackingStorePixelRatio ||
-      //   globals.context.msBackingStorePixelRatio ||
-      //   globals.context.oBackingStorePixelRatio ||
-      //   globals.context.backingStorePixelRatio || 1;
-
-      // return devicePixelRatio / backingStoreRatio;
-      return 1;
-    },
-
-    /* ------------------------------------------- */
-    // -- Reset function
-    // -- Resets the game, clears the timers, etc.
-    // -- @return void
-    /* ------------------------------------------- */
-
-    reset: function () {
-      console.log("reset()");
-      // Clear the timer
-      clearInterval(globals.clock);
-      clearInterval(globals.restart);
-
-      // Wipe the canvas clean
-      // globals.context.clearRect(0, 0, defaults.width, defaults.height);
-
-      // Reset all global vars to their default value
-      globals.gameover = false;
-      globals.firstClick = true;
-      globals.totalMines = 0;
-      globals.totalFlags = 0;
-      globals.elapsedTime = 0;
-      globals.mineMap = new Array(globals.squaresX);
-      globals.flagMap = new Array(globals.squaresX);
-      globals.revealedMap = new Array(globals.squaresX);
-
-      // Clear certain containers
-      // containers.flags.html('');
-      // containers.status.html('Game on :)');
-      // containers.mines.html('');
-      // containers.time.html('0');
-      // containers.msg.html('Click on a square to start the game!');
-
-      // Initialize the board
-      core.setup();
-
-      defaults.mineCount = 51;
-      action.generateMines();
-      console.log(globals.mineMap);
-      console.log('total mines: ', globals.totalMines);
-
-      clearInterval(globals.currentAnimation);
-      // animation.walker();
-      globals.players[0] = defaults.newPlayer('A');
-      globals.players[1] = defaults.newPlayer('B');
-    },
-
-    /* ------------------------------------------- */
-    // -- Setup function
-    // -- Sets up certain variables and draws the 
-    // -- board. Used during both init() and reset()
-    // -- @return void
-    /* ------------------------------------------- */
-
-    setup: function () {
-      console.log('setup()');
-      // Clear flagMap array
-      for (var k = 0; k < globals.squaresX; k++) {
-        globals.flagMap[k] = Array(globals.squaresY);
-        globals.revealedMap[k] = Array(globals.squaresY);
-      }
-
-      // scores.display();
-
-      // Make sure proper styles are set
-      // globals.context.strokeStyle = defaults.celStroke;
-      // globals.context.fillStyle = defaults.celColor;
-
-      // animation.standardBoard();
-    },
-
-    /* ------------------------------------------- */
-    // -- Timer function
-    // -- Starts the clock
-    // -- @return void
-    /* ------------------------------------------- */
-
-    timer: function () {
-      // Setup global var timer
-      globals.clock = setInterval(function () {
-        globals.elapsedTime++;
-        // Append time to #time
-        // containers.time.html(globals.elapsedTime);
-        // socket
-      }, 1000);
-    }
-  };
-
-  /* =========================================== */
-  // --- Action Functions ---
-  /* =========================================== */
-
-  var action = {
-
-    /* ------------------------------------------- */
-    // -- Click function
-    // -- listens to right and left mouse clicks
-    // -- and determines the proper cel and what 
-    // -- action to take.
-    // -- @return void
-    /* ------------------------------------------- */
-
-    click: function (e) {
-
-      if (globals.gameover) {
-        return false;
-      }
-
-      // Calculate x & y relevant to the cel size, also (l) check if current x,y combo has already been revealed
-      var x = Math.floor((e.pageX - globals.canvas[0].offsetLeft - 1) / defaults.celSize),
-        y = Math.floor((e.pageY - globals.canvas[0].offsetTop - 1) / defaults.celSize),
-        revealed = (globals.revealedMap[x][y]) ? 1 : -1;
-
-      // If left-click, not a flag and the game is still going on
-      if (e.which === 1 && globals.flagMap[x][y] !== 1 && defaults.difficulty !== 0) {
-
-
-        // Activate index function. See below for more details
-        var hasMine = action.index(x, y);
-        if (hasMine === 0) {
-          globals.turn = (globals.turn + 1) % 2;
-        }
-      }
-    },
-
-    /* ------------------------------------------- */
-    // -- Hover function
-    // -- Speaks for itself
-    // -- @return void
-    /* ------------------------------------------- */
-
-    hover: function (e) {
-
-      if (!globals.gameover) {
-        // Calculate x & y relevant to the cel size, also (l) check if current x,y combo has already been revealed
-        var x = Math.floor((e.pageX - globals.canvas[0].offsetLeft - 1) / defaults.celSize),
-          y = Math.floor((e.pageY - globals.canvas[0].offsetTop - 1) / defaults.celSize),
-          l = (globals.revealedMap[x][y]) ? 1 : -1,
-          f = (globals.flagMap[x][y]) ? 1 : -1;
-
-        var pX = globals.previous[0],
-          pY = globals.previous[1];
-
-        if (typeof pX !== 'undefined' && globals.revealedMap[pX][pY] !== 1 && globals.flagMap[pX][pY] !== 1) {
-          // globals.context.fillStyle = defaults.celColor;
-          util.roundRect(globals.previous[0], globals.previous[1]);
+            this.inList = inList || [];
+            this.outList = outList || [];
         }
 
-        if (l < 0 && f < 0 && !globals.firstClick) {
-
-          // globals.context.fillStyle = '#aaa';
-          // util.roundRect(x, y);
-          globals.previous[0] = x;
-          globals.previous[1] = y;
-        }
-      }
-    },
-
-    /* ------------------------------------------- */
-    // -- Index function
-    // -- Used to determine whether square is a mine
-    // -- or not 
-    // -- @return -1 if not applicable, 0 if no mine, >0 if have found mine
-    /* ------------------------------------------- */
-
-    index: function (x, y) {
-
-      // If invalid
-      // i.e. square is not revealed, is within boundaries and exists
-      // abort and return -1
-      if (
-        x < 0 || y < 0 ||
-        x > globals.squaresX || y > globals.squaresY ||
-        util.is('revealed', x, y) ||
-        globals.mineMap[x] === undefined
-      ) {
-        return -1;
-      }
-
-      // ELSE:
-
-      // Add revealed square to the revealed array
-      globals.revealedMap[x][y] = 1;
-
-      // if there is a mine here
-      if (globals.mineMap[x][y] === -1) {
-        // add score
-        globals.players[globals.turn].score++;
-        globals.mineMap[x][y] = -10 * (globals.turn + 1);
-        globals.totalFlags++;
-        return 1;
-        // changes will be propergated later
-
-        // if not a mine and no surrounding mines
-      } else if (globals.mineMap[x][y] === 0) {
-
-        // remove all neighbors till squares are found that do have surrounding mines
-        for (var i = -1; i <= 1; i++) {
-          for (var j = -1; j <= 1; j++) {
-            action.index(x + i, y + j);
-          }
+        getNeighbor(dx, dy) {
+            return ((this.pipeGame.map[this.x + dx] || {})[this.y + dy] || {});
         }
 
-      } else {
-        // just reveal it
-      }
+        updateProgress(dt) {
+            // console.log('updateProgress', this.pipeType, this.progress);
 
-      var data = {
-        x,
-        y,
-        newVal: globals.mineMap[x][y]
-      };
-      signals.updated.dispatch(data);
-      return 0;
-    },
-
-    /* ------------------------------------------- */
-    // -- Flag function
-    // -- Used to flag a square
-    // -- @return void
-    /* ------------------------------------------- */
-
-    flag: function (flag, x, y) {
-
-      // If square is not already flagged
-      if (globals.flagMap[x][y] !== 1) {
-
-        // Draw flag
-        // globals.context.drawImage(flag, x * defaults.celSize, y * defaults.celSize, defaults.celSize, defaults.celSize);
-        globals.flagMap[x][y] = 1;
-        globals.totalFlags++;
-
-      } else {
-
-        // Remove flag image
-        // var img = globals.context.createImageData(defaults.celSize, defaults.celSize);
-        for (var i = img.data.length; --i >= 0;) {
-          img.data[i] = 0;
-        }
-
-        // globals.context.putImageData(img, x * defaults.celSize, y * defaults.celSize);
-
-        // Make sure proper styles are set
-        // globals.context.strokeStyle = defaults.celStroke;
-        // globals.context.fillStyle = defaults.celColor;
-
-        // util.roundRect(x, y);
-
-        globals.flagMap[x][y] = 0;
-        globals.totalFlags--;
-      }
-
-      // Adjust counters accordingly
-      // containers.mines.html('You have to find ' + (globals.totalMines - globals.totalFlags) + ' mines to win.');
-      // containers.flags.html('You have set ' + globals.totalFlags + ' flags.');
-
-      // With every flag (or unflag) check if the game has been won
-      action.won();
-    },
-
-    /* ------------------------------------------- */
-    // -- Won function
-    // -- Used to determine if the game has been won
-    // -- @return void
-    /* ------------------------------------------- */
-
-    won: function () {
-
-      // Setup counter
-      var count = 0;
-
-      // Count the number of flagged mines 
-      for (var i = 0; i < globals.squaresX; i++) {
-        for (var j = 0; j < globals.squaresY; j++) {
-          if ((globals.flagMap[i][j] === 1) && (globals.mineMap[i][j] === -1)) {
-            count++;
-          }
-        }
-      }
-
-      // If the number of flagged mines equals the total number of mines, the game has been won
-      if (count === globals.totalMines) {
-        // Set game over status
-        globals.gameover = true;
-        // containers.status.html('You won! :D');
-
-        // scores.save();
-
-        // Stops the timer and counts down to a reset of the game
-        clearInterval(globals.clock);
-      }
-    },
-
-    /* ------------------------------------------- */
-    // -- Generate Mines function
-    // -- Places the mines on the field, at random
-    // -- @return void
-    /* ------------------------------------------- */
-
-    generateMines: function () {
-
-      // For every square
-      for (var i = 0; i < globals.squaresX; i++) {
-        globals.mineMap[i] = new Array(globals.squaresY);
-        for (var j = 0; j < globals.squaresY; j++) {
-          globals.mineMap[i][j] = 0;
-        }
-      }
-      for (var i = 0; i < defaults.mineCount; i++) {
-        do {
-          var x = Math.floor(Math.random() * globals.squaresX);
-          var y = Math.floor(Math.random() * globals.squaresY);
-        } while (!(globals.mineMap[x][y] === 0));
-        globals.mineMap[x][y] = -1;
-      }
-      // The lower the dificulty, the more mines
-      // for (var j = 0; j < globals.squaresY; j++) {
-      //   globals.mineMap[i][j] = Math.floor((Math.random() * defaults.difficulty) - 1);
-
-      //   if (globals.mineMap[i][j] > 0) {
-      //     globals.mineMap[i][j] = 0;
-      //   }
-      // }
-
-
-      // Move on to the next step of the setup
-      action.calculateMines();
-    },
-
-    /* ------------------------------------------- */
-    // -- Calculate Mines function
-    // -- Used to calculate surrounding mines number
-    // -- @return void
-    /* ------------------------------------------- */
-
-    calculateMines: function () {
-
-      var mineCount = 0;
-      globals.totalMines = 0;
-
-      // Check every square
-      for (var i = 0; i < globals.squaresX; i++) {
-        for (var j = 0; j < globals.squaresY; j++) {
-
-          if (globals.mineMap[i][j] === -1) {
-
-            var xArr = [i, i + 1, i - 1],
-              yArr = [j, j + 1, j - 1];
-
-            /* 
-          	
-            The loop iterates over the surrounding squares as shown below:
-                	
-                  -------------------------
-                  | i - 1 |   i   | i + 1 |
-                  | j - 1 | j - 1 | j - 1 |
-                  -------------------------
-                  | i - 1 |   i   | i + 1 |
-                  |   j   |   j   |   j   |
-                  -------------------------
-                  | i - 1 |   i   | i + 1 |
-                  | j + 1 | j - 1 | j + 1 |
-                  -------------------------	
-            */
-
-            for (var a = 0; a < 3; a++) {
-              for (var b = 0; b < 3; b++) {
-                if (util.is('mine', xArr[a], yArr[b])) {
-                  globals.mineMap[xArr[a]][yArr[b]]++;
-                }
-              }
+            if (this.pipeType === '-') this.progress = Math.max(Math.floor(0.4 * this.duration), this.progress);
+            if (this.progress < this.duration) {
+                this.progress += dt;
             }
-
-            globals.totalMines++;
-          }
         }
-      }
-    },
 
-    /* ------------------------------------------- */
-    // -- Reveal Mines function
-    // -- Reveals all the mines and triggers a game
-    // -- over status
-    // -- @return void
-    /* ------------------------------------------- */
-
-    revealMines: function (mine) {
-
-      // Draw all the mines
-      for (var i = 0; i < globals.squaresX; i++) {
-        for (var j = 0; j < globals.squaresY; j++) {
-          if (globals.mineMap[i][j] === -1) {
-            // globals.context.drawImage(mine, i * defaults.celSize, j * defaults.celSize, defaults.celSize, defaults.celSize);
-          }
+        isFull() {
+            if (this.duration < 0) return null;
+            return this.progress >= this.duration;
         }
-      }
 
-      // Set game over status
-      globals.gameover = true;
-      // containers.status.html('Game over :(');
-      // containers.msg.html('Click the reset button to start a new game');
+        canInputFrom(inDir) {
+            const dirIndexList = {
+                '+': [0, 1, 2, 3],
+                'T': [0, 1, 2],
+                'L': [0, 3],
+                '|': [1, 3],
+                '-': [0],
+            };
+            const dirs = dirIndexList[this.pipeType].map((i) => (i + this.pipeDir) % 4);
 
-      // Stops the timer and counts down to a reset of the game
-      clearInterval(globals.clock);
-    },
+            return dirs.includes(inDir);
+        }
 
-    /* ------------------------------------------- */
-    // -- Reveal Mines function
-    // -- Reveals all the mines and triggers a game
-    // -- over status
-    // -- @return void
-    /* ------------------------------------------- */
+        activatePipe(progress, duration, inList) {
+            this.progress = Math.max(this.progress, progress);
+            this.duration = duration;
+            this.inList = Array.from(new Set(this.inList.concat(inList)));
+        }
 
-    revealMine: function (mine, x, y) {
+        updateOutList() {
+            const dirIndexList = {
+                '+': [0, 1, 2, 3],
+                'T': [0, 1, 2],
+                'L': [0, 3],
+                '|': [1, 3],
+                '-': [0],
+            };
+            const dirs = dirIndexList[this.pipeType].map((i) => (i + this.pipeDir) % 4);
 
-      // Draw the mine
-      // globals.context.drawImage(mine, x * defaults.celSize, y * defaults.celSize, defaults.celSize, defaults.celSize);
 
-      // Set game over status
-      // globals.gameover = true;
-      // containers.status.html('Game over :(');
-      // containers.msg.html('Click the reset button to start a new game');
+            // const possibleOutList = dirs.filter((i) => !this.inList.includes(i));
+            this.outList = dirs.filter((i) => !this.inList.includes(i));
+            // console.log('updateOutList', this.x, this.y, this.pipeType, this.pipeDir, dirs, this.outList);
+        }
 
-      // Stops the timer and counts down to a reset of the game
-      // clearInterval(globals.clock);
+
+        getDirs() {
+
+            const dirIndexList = {
+                '+': [0, 1, 2, 3],
+                'T': [0, 1, 2],
+                'L': [0, 3],
+                '|': [1, 3],
+                '-': [0],
+            };
+
+            const dirs = dirIndexList[this.pipeType].map((i) => (i + this.pipeDir) % 4);
+
+            return dirs;
+        }
+
+        getDeltas() {
+            const deltas = [
+                [1, 0],
+                [0, 1],
+                [-1, 0],
+                [0, -1],
+            ];
+            return this.getDirs().map((i) => deltas[i]);
+        }
+
+        getNeighbors() {
+            return this.getDeltas().map((delta) => this.getNeighbor(...delta));
+        }
+
+        canCompleteCycle() {
+            const deltas = [
+                [1, 0],
+                [0, 1],
+                [-1, 0],
+                [0, -1],
+            ];
+
+            // debugger;
+            return this.getDirs().filter((dir) => {
+                const delta = deltas[dir];
+                const neighbor = this.getNeighbor(...delta);
+
+                return neighbor.isFull() && neighbor.getDirs().some((d) => (d + 2) % 4 === dir);
+            }).length >= 2;
+        }
+
+        pourToNeighbors(newDuration, fronts, players) {
+            const deltas = [
+                [1, 0],
+                [0, 1],
+                [-1, 0],
+                [0, -1],
+            ];
+
+
+            const dirs = this.getDirs();
+
+            dirs.forEach((i) => {
+                const delta = deltas[i];
+                const cell = this.getNeighbor(...delta);
+                if (!cell) return;
+                if (cell.pipeType === '') return;
+
+                const inDir = (i + 2) % 4;
+                if (cell.isFull()) return;
+                if (!cell.canInputFrom(inDir)) return;
+
+                const player = players.find((player) => {
+                    return (player.mode === 'cell' &&
+                        player.cellX === cell.x && player.cellY === cell.y
+                    );
+                });
+                player.updateFluidDuration();
+                cell.activatePipe(this.progress - this.duration, player.fluidDuration, [(i + 2) % 4]);
+                fronts.add(cell);
+            })
+        }
+
+        toJSON() {
+            const {
+                x, y,
+                pipeType, pipeDir,
+                duration, progress,
+                inList, outList,
+            } = this;
+            return {
+                x, y,
+                pipeType, pipeDir,
+                duration, progress,
+                inList: inList.slice(),
+                outList: outList.slice(),
+            };
+        }
     }
-  };
 
-  /* =========================================== */
-  // --- Scores Functions ---
-  /* =========================================== */
-
-  var scores = {
-
-    //   display: function () {
-
-    //     if (typeof Storage !== 'undefined') {
-
-    //       //delete localStorage.scores;
-
-    //       if (typeof localStorage.scores !== 'undefined') {
-
-    //         var lScores = JSON.parse(localStorage.scores);
-
-    //         containers.scoreboard.html('<tr><th>Name</th><th>Mines</th><th>Seconds</th></tr>');
-
-    //         $.each(lScores, function () {
-    //           containers.scoreboard.append('<tr><td>' + this[0] + '</td><td>' + this[2] + '</td><td>' + this[3] + '</td></tr>');
-    //         });
-
-    //       } else {
-
-    //         containers.scoreboard.html('<tr><td>You have not won any games yet :(</td></tr>');
-    //       }
-
-    //     } else {
-    //       containers.scoreboard.html('<tr><td>Unfortunately, your browser does not support local storage</td></tr>');
-    //     }
-
-    //   },
-
-    //   save: function () {
-
-    //     if (typeof Storage !== 'undefined') {
-
-    //       var name = prompt('Your score is being stored. Please enter your name', 'Name'),
-    //         score = [name, 'Insane', globals.totalMines, globals.elapsedTime, 10000];
-
-    //       var scores = (typeof localStorage.scores !== 'undefined') ? JSON.parse(localStorage.scores) : new Array();
-
-    //       scores.push(score);
-    //       localStorage.scores = JSON.stringify(scores);
-    //     }
-    //   }
-
-  };
-
-  /* =========================================== */
-  // --- Animation Functions ---
-  /* =========================================== */
-
-  var animation = {
-
-    //   standardBoard: function () {
-
-    //     globals.context.fillStyle = defaults.celColor;
-
-    //     for (var i = 0; i <= globals.squaresX; i++) {
-    //       for (var j = 0; j <= globals.squaresY; j++) {
-    //         util.roundRect(i, j);
-    //       }
-    //     }
-    //   },
-
-    //   walker: function () {
-    //     // Make sure proper styles are set
-    //     globals.context.strokeStyle = defaults.celStroke;
-
-    //     var x = 0, y = 0;
-    //     globals.currentAnimation = setInterval(function () {
-
-    //       animation.standardBoard();
-
-    //       globals.context.fillStyle = '#f16529';
-    //       util.roundRect(x, y);
-
-    //       x++;
-
-    //       if (x === globals.squaresX) { x = 0; y++; }
-
-    //       if (y === globals.squaresY) { x = 0; y = 0; }
-
-    //     }, 30);
-    //   },
-
-    //   topDown: function () {
-    //     // Make sure proper styles are set
-    //     globals.context.strokeStyle = defaults.celStroke;
-
-    //     var y = 0;
-    //     globals.currentAnimation = setInterval(function () {
-
-    //       animation.standardBoard();
-
-    //       globals.context.fillStyle = '#f16529';
-
-    //       for (var x = 0; x <= globals.squaresX; x++) {
-    //         util.roundRect(x, y);
-    //       }
-
-    //       if (y === globals.squaresY) {
-    //         y = 0;
-    //       }
-
-    //       y++;
-
-    //     }, 50);
-    //   },
-
-    //   leftRight: function () {
-
-    //     globals.context.strokeStyle = defaults.celStroke;
-
-    //     var x = 0, dir = 0;
-    //     globals.currentAnimation = setInterval(function () {
-
-    //       animation.standardBoard();
-
-    //       globals.context.fillStyle = '#f16529';
-
-    //       util.roundRect(x, y);
-
-    //       if (dir === 0 && x === globals.squaresX) {
-    //         dir = 1;
-    //       } else if (dir === 1 && x === -1) {
-    //         dir = 0;
-    //       }
-
-    //       if (dir === 0) {
-    //         x++;
-    //       } else if (dir === 1) {
-    //         x--;
-    //       }
-
-    //     }, 50);
-    //   },
-
-    //   arrow: function () {
-
-    //     var longArrow = [
-    //       [5, 9], [5, 10], [5, 11],
-    //       [6, 9], [6, 10], [6, 11],
-    //       [7, 9], [7, 10], [7, 11],
-    //       [8, 9], [8, 10], [8, 11],
-    //       [9, 9], [9, 10], [9, 11],
-    //       [10, 9], [10, 10], [10, 11],
-    //       [11, 9], [11, 10], [11, 11],
-
-    //       [12, 8], [12, 9], [12, 10], [12, 11], [12, 12],
-    //       [13, 9], [13, 10], [13, 11],
-    //       [14, 10]
-    //     ],
-    //       shortArrow = [
-    //         [5, 9], [5, 10], [5, 11],
-    //         [6, 9], [6, 10], [6, 11],
-    //         [7, 9], [7, 10], [7, 11],
-    //         [8, 9], [8, 10], [8, 11],
-    //         [9, 9], [9, 10], [9, 11],
-    //         [10, 9], [10, 10], [10, 11],
-
-    //         [11, 8], [11, 9], [11, 10], [11, 11], [11, 12],
-    //         [12, 9], [12, 10], [12, 11],
-    //         [13, 10]
-    //       ],
-    //       x = 0,
-    //       arrow = shortArrow;
-
-    //     globals.currentAnimation = setInterval(function () {
-
-    //       animation.standardBoard();
-
-    //       globals.context.fillStyle = '#f16529';
-
-    //       for (var i = 0; i <= arrow.length; i++) {
-    //         if (arrow[i] !== undefined) {
-    //           util.roundRect(arrow[i][0] * defaults.celSize, arrow[i][1] * defaults.celSize, defaults.celSize - 1, defaults.celSize - 1);
-    //         }
-    //       }
-
-    //       if (x % 2 === 0) {
-    //         arrow = longArrow;
-    //       } else {
-    //         arrow = shortArrow;
-    //       }
-
-    //       x++;
-
-    //     }, 200);
-    //   }
-
-  };
-
-  /* =========================================== */
-  // --- Utility Functions ---
-  /* =========================================== */
-
-  var util = {
-
-    /* ------------------------------------------- */
-    // -- Rounded Rectangle function
-    // -- Draws rounded rectangles
-    /* ------------------------------------------- */
-
-    // roundRect: function (x, y) {
-
-    //   var width = defaults.celSize - 1,
-    //     height = defaults.celSize - 1,
-    //     x = x * defaults.celSize,
-    //     y = y * defaults.celSize;
-
-    //   globals.context.beginPath();
-    //   globals.context.moveTo(x + defaults.celRadius, y);
-    //   globals.context.lineTo(x + width - defaults.celRadius, y);
-    //   globals.context.quadraticCurveTo(x + width, y, x + width, y + defaults.celRadius);
-    //   globals.context.lineTo(x + width, y + height - defaults.celRadius);
-    //   globals.context.quadraticCurveTo(x + width, y + height, x + width - defaults.celRadius, y + height);
-    //   globals.context.lineTo(x + defaults.celRadius, y + height);
-    //   globals.context.quadraticCurveTo(x, y + height, x, y + height - defaults.celRadius);
-    //   globals.context.lineTo(x, y + defaults.celRadius);
-    //   globals.context.quadraticCurveTo(x, y, x + defaults.celRadius, y);
-    //   globals.context.closePath();
-    //   globals.context.stroke();
-    //   globals.context.fill();
-    // },
-
-    /* ------------------------------------------- */
-    // -- Switch Screens function
-    // -- Switch between start and game screen
-    /* ------------------------------------------- */
-
-    switchScreens: function () {
-      if ($('.startscreen').is(':hidden') === false) {
-        $('.startscreen').fadeToggle(400, 'swing', function () {
-          core.reset();
-          $('.gamescreen').fadeToggle();
-        });
-      } else {
-        $('.gamescreen').fadeToggle(400, 'swing', function () {
-          core.reset();
-          defaults.difficulty = 0;
-          $('.startscreen').fadeToggle();
-        });
-      }
-    },
-
-    is: function (what, x, y) {
-      var p = {
-        'revealed': globals.revealedMap,
-        'mine': globals.mineMap,
-        'flag': globals.flagMap
-      };
-
-      return (
-        p[what][x] !== undefined &&
-        p[what][x][y] !== undefined &&
-        p[what][x][y] > -1
-      );
-    },
-    getState: function () {
-      return {
-        revealed: globals.revealedMap,
-        // 'mine': globals.mineMap,
-        flag: globals.flagMap,
-        totalMines: globals.totalMines,
-        totalFlags: globals.totalFlags,
-        masked: this.getStateB()
-      };
-    },
-    getStateB: function () {
-      var mask = globals.revealedMap;
-      var result = globals.mineMap.map(function (arr) {
-        return arr.slice();
-      });
-
-      for (var i = 0; i < globals.squaresX; i++) {
-        for (var j = 0; j < globals.squaresY; j++) {
-          if (mask[i][j] !== 1) {
-            result[i][j] = '';
-          }
+    class Player {
+        constructor(i, { fluidTable }) {
+            this.playerID = i;
+            this.fluidTable = fluidTable.slice();
+            this.fluidDuration = 3000;
+            this.fluidLevel = 0;
+            this.mode = 'idle'; // 'idle', 'rotate', 'cell'
+            this.cell = null;
+            this.cellX = null;
+            this.cellY = null;
         }
-      }
-      return result;
+
+        setViewXY(cellX, cellY) {
+            this.cellX = cellX;
+            this.cellY = cellY;
+        }
+
+        setCell(cell) {
+            this.cell = cell;
+        }
+
+        addFluidLevel(amt) {
+            this.fluidLevel += amt;
+            this.fluidLevel = Math.max(0, this.fluidLevel);
+            this.updateFluidDuration();
+        }
+
+        updateFluidDuration() {
+            const { count, duration } = this.fluidTable.find(({ count, duration }) => count >= this.fluidLevel);
+            this.fluidDuration = duration;
+        }
     }
-  };
 
-  /* =========================================== */
-  // --- Initiate extra-water ---
-  /* =========================================== */
+    const pipeGame = {
+        gameid: '',
+        gridWidth: 25,
+        gridHeight: 25,
 
-  // core.init();
-  return {
-    globals,
-    core,
-    action,
-    util,
-    signals,
-  }
+        map: [],
+        fronts: new Set(),
+        fluidDuration: 5000,
+        last: 0,
+
+        ups: 10,
+        players: [],
+        samplePlayer: new Player(-1, {
+            fluidTable: [
+                { count: 0, duration: 5000 },
+                { count: 2, duration: 4000 },
+                { count: 6, duration: 3000 },
+                { count: 10, duration: 2000 },
+                { count: 15, duration: 1500 },
+                { count: 20, duration: 1000 },
+                { count: 30, duration: 500 },
+            ],
+        }),
+        connectCommand: { leftCell: null, leftOut: null, rightCell: null, rightIn: null },
+        playerJoined: new Signal(),
+        playerUpdated: new Signal(),
+        scoreUpdated: new Signal(),
+        gameIsOver: new Signal(),
+
+        score: 0,
+
+        initMap() {
+            this.map = (new Array(this.gridWidth)
+                .fill(1)
+                .map((_, x) => {
+                    return (new Array(this.gridHeight)
+                        .fill(1)
+                        // @ts-ignore: Optional parameters in pure JS
+                        .map((_, y) => new Cell({ pipeGame: this, x, y }))
+                    );
+                }));
+            // this.iterateMap((cell, x, y) => {
+            //     cell.pipeType = ['', '+', 'T', 'L', '|', '-'][Math.floor(Math.random() * 5)];
+            //     cell.pipeDir = Math.floor(Math.random() * 4);
+            // });
+        },
+        iterateMap(callback) {
+            this.map.forEach((col, x) => {
+                col.forEach((cell, y) => {
+                    // const cellGraphic = mapGraphics[x][y];
+                    callback(cell, x, y);
+                });
+            })
+        },
+        init() {
+            const [xx, yy] = [
+                Math.floor(this.gridWidth / 2),
+                Math.floor(this.gridHeight / 2),
+            ];
+            // let cell;
+            // this.fronts.add(cell = this.map[xx][yy]);
+
+            // cell.pipeType = '-';
+            // cell.pipeDir = Math.floor(Math.random() * 4);
+            // cell.activatePipe(Math.floor(0.4 * this.fluidDuration), this.fluidDuration, []);
+            // cell.updateOutList();
+        },
+
+        startGame() {
+            this.last = Date.now();
+            setTimeout(() => this.updateFluid(), 1000 / this.ups);
+        },
+
+        updateFluid() {
+            const delta = Date.now() - this.last;
+            // console.log('updateGame', delta);
+            this.fronts.forEach((cell) => {
+                if (cell.isFull()) this.fronts.delete(cell);
+            });
+            this.fronts.forEach((cell) => {
+                cell.updateProgress(delta);
+                // console.log(cell);
+
+            });
+            this.updateScore();
+            this.fronts.forEach((cell) => {
+                // console.log(cell.isFull());
+
+                if (cell.isFull()) {
+                    cell.pourToNeighbors(this.fluidDuration, this.fronts, this.players);
+
+                    const player = this.players.find((player) => {
+                        return (player.mode === 'cell' &&
+                            player.cellX === cell.x && player.cellY === cell.y
+                        );
+                    });
+                    player.mode = 'idle';
+                }
+            });
+            this.fronts.forEach((cell) => {
+                cell.updateOutList();
+            });
+
+            this.players.forEach((player) => {
+                if (player.mode === 'idle') {
+
+                    player.addFluidLevel(-delta / 1000 / 5 * 0.8);
+                }
+            })
+
+            this.dispatchPlayerChange();
+
+            if (this.fronts.size > 0) {
+                this.last = Date.now();
+                setTimeout(this.updateFluid.bind(this), 1000 / this.ups);
+            } else {
+                console.log('game over');
+                this.gameOver();
+            }
+        },
+
+        updateScore() {
+            this.fronts.forEach((cell) => {
+                let score = 0;
+                const playerID = this.players.findIndex((player) => {
+                    return (player.mode === 'cell' &&
+                        player.cellX === cell.x && player.cellY === cell.y
+                    );
+                });
+                // console.log(`Player-${playerID}`);
+
+                if (cell.isFull()) {
+                    score += 1;
+                    const neighbours = cell.getNeighbors();
+                    // debugger;
+                    // console.log('updateScore', playerID, neighbours);
+
+                    if (cell.canCompleteCycle()) {
+                        score += 4;
+                    }
+                    this.players[playerID].addFluidLevel(1);
+                    this.addScore(playerID, score);
+
+                }
+            });
+        },
+
+        dispatchPlayerChange() {
+            this.players.forEach((player) => {
+                if (player.mode === 'cell') {
+                    const cell = this.map[player.cellX][player.cellY];
+                    // console.log('dispatchPlayerChange cell');
+
+                    this.playerUpdated.dispatch({
+                        playerID: player.playerID,
+                        fluidLevel: player.fluidLevel,
+                        mode: player.mode,
+                        score: this.score,
+                        map: this.serializeMap(),
+                        cell: {
+                            x: cell.x,
+                            y: cell.y,
+                            pipeType: cell.pipeType,
+                            pipeDir: cell.pipeDir,
+                            duration: cell.duration,
+                            progress: cell.progress,
+                            inList: cell.inList.slice(),
+                            outList: cell.outList.slice(),
+                        },
+                    });
+                } else if (player.mode === 'rotate') {
+                    const cell = player.cell;
+                    // console.log('dispatchPlayerChange rotate');
+
+                    this.playerUpdated.dispatch({
+                        playerID: player.playerID,
+                        fluidLevel: player.fluidLevel,
+                        mode: player.mode,
+                        score: this.score,
+                        map: this.serializeMap(),
+                        cell: {
+                            x: cell.x,
+                            y: cell.y,
+                            pipeType: cell.pipeType,
+                            pipeDir: cell.pipeDir,
+                            duration: cell.duration,
+                            progress: cell.progress,
+                            inList: cell.inList.slice(),
+                            outList: cell.outList.slice(),
+                        },
+                    });
+                } else if (player.mode === 'idle') {
+                    const cell = player.cell;
+                    // console.log('dispatchPlayerChange idle');
+
+                    this.playerUpdated.dispatch({
+                        playerID: player.playerID,
+                        fluidLevel: player.fluidLevel,
+                        mode: player.mode,
+                        score: this.score,
+                        map: this.serializeMap(),
+                        // cell: {
+                        //     x: cell.x,
+                        //     y: cell.y,
+                        //     pipeType: cell.pipeType,
+                        //     pipeDir: cell.pipeDir,
+                        //     duration: cell.duration,
+                        //     progress: cell.progress,
+                        //     inList: cell.inList.slice(),
+                        //     outList: cell.outList.slice(),
+                        // },
+                    });
+                }
+            });
+        },
+
+        playerJoin() {
+            let player;
+            this.players.push(player = new Player(this.players.length, this.samplePlayer));
+            console.log('Player joined:', player.playerID);
+            this.playerJoined.dispatch({
+                map: this.serializeMap(),
+                playerID: player.playerID,
+            });
+            this.dispatchPlayerChange();
+            return player;
+        },
+
+        playerPutCell({ playerID, cell, cellX, cellY }) {
+            const player = this.players[playerID];
+            if (!player) throw new Error('playerPutCell: player not found: ' + playerID);
+
+            player.updateFluidDuration();
+            console.log('playerPutCell', playerID, cell, cellX, cellY, player.fluidDuration);
+            const currentCell = this.map[cellX][cellY];
+            if (currentCell.progress <= 0 || currentCell.duration < 0) {
+                this.addCell(cellX, cellY, cell.pipeType, cell.pipeDir, player.fluidDuration);
+                player.cellX = cellX;
+                player.cellY = cellY;
+                player.mode = 'cell';
+                this.dispatchPlayerChange();
+            } else {
+                console.log('playerPutCell: existing cell');
+
+                player.mode = 'cell';
+                this.dispatchPlayerChange();
+
+            }
+        },
+
+        onPlayerClickEdge(playerID, edgeDir) {
+            // edgeDir = 0,1,2,3 (0=right, 1=bottom)
+            if (this.connectCommand.leftCell == null) {
+
+            } else if (this.connectCommand.rightCell == null) {
+
+            } else {
+
+            }
+        },
+        playerPickUpCell(playerID) {
+            const player = this.players[playerID];
+            if (!player) throw new Error('playerPickUpCell: player not found: ' + playerID);
+
+            // debugger;
+            const cell = (this.map[player.cellX] || {})[player.cellY];
+            if (!cell) throw new Error('playerPickUpCell: cell not found: ' + player.cellX + ',' + player.cellY);
+
+
+            console.log('playerPickUpCell', playerID, player.mode, cell.isFull());
+
+            if (player.mode === 'cell') {
+                if (cell.isFull()) {
+                    console.log('playerPickUpCell isFull');
+
+                    player.mode = 'idle';
+                    this.playerGetCell(playerID);
+                }
+            }
+        },
+        playerGetCell(playerID) {
+            const player = this.players[playerID];
+            if (!player) throw new Error('playerGetCell: player not found: ' + playerID);
+
+            console.log('playerGetCell', playerID);
+
+            if (player.mode === 'idle') {
+                if (this.fronts.size <= 0) {
+                    player.setCell(new Cell({
+                        pipeGame: this,
+                        pipeType: '-',
+                        pipeDir: Math.floor(Math.random() * 4),
+                    }));
+                    player.mode = 'rotate';
+                    this.dispatchPlayerChange();
+                } else {
+                    player.setCell(new Cell({
+                        pipeGame: this,
+                        pipeType: ['+', 'T', 'L', '|'][Math.floor(Math.random() * 4)],
+                        pipeDir: Math.floor(Math.random() * 4),
+                    }));
+                    player.mode = 'rotate';
+                    this.dispatchPlayerChange();
+                }
+            }
+        },
+
+        playerRotate(playerID) {
+            const player = this.players[playerID];
+            if (!player) throw new Error('playerGetCell: player not found: ' + playerID);
+            console.log('playerRotate', playerID);
+
+            if (player.mode === 'rotate') {
+                player.cell.pipeDir += 1;
+                player.cell.pipeDir %= 4;
+                this.dispatchPlayerChange();
+            }
+        },
+
+        addCell(x, y, pipeType, pipeDir, fluidDuration) {
+            const cell = this.map[x][y];
+
+            cell.pipeType = pipeType || '-';
+            cell.pipeDir = pipeDir;
+            cell.activatePipe(0, fluidDuration, []);
+            cell.updateOutList();
+            if (this.fronts.size <= 0) this.fronts.add(cell);
+        },
+
+        addScore(playerID, score) {
+            this.score += score;
+            console.log('addScore', this.score);
+
+            this.scoreUpdated.dispatch(playerID, score, this.score);
+        },
+        gameOver() {
+            this.gameIsOver.dispatch(this.score);
+        },
+
+        serializeMap() {
+            return (
+                this.map.map((col, x) => col.map((cell, y) => cell.toJSON()))
+            );
+        }
+    };
+    return pipeGame;
 }
 module.exports = Game;
