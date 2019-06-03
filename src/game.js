@@ -271,12 +271,12 @@ function Game() {
         players: [],
         samplePlayer: new Player(-1, {
             fluidTable: [
-                { count: 0, duration: 7000 },
-                { count: 2, duration: 5000 },
-                { count: 6, duration: 4500 },
-                { count: 10, duration: 4000 },
-                { count: 15, duration: 3000 },
-                { count: 20, duration: 2000 },
+                { count: 0, duration: 8000 },
+                { count: 2, duration: 7500 },
+                { count: 6, duration: 6000 },
+                { count: 10, duration: 5000 },
+                { count: 15, duration: 4000 },
+                { count: 20, duration: 3000 },
                 { count: 30, duration: 1000 },
             ],
         }),

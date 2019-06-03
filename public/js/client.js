@@ -760,6 +760,7 @@ $(function () {
 
                 let dirBtn;
                 this.arrowContainer.add(dirBtn = this.add.image(250 + delta[0] * 200, 250 + delta[1] * 200, 'right_button'));
+                dirBtn.setScale(1.5);
                 dirBtn.setAngle(dirIndex * 90);
                 dirBtn.setInteractive().on('pointerdown', () => {
                     dirBtn.setTint(0xAAAAAA);
@@ -822,7 +823,7 @@ $(function () {
                 this.isTutorial = false;
             }
             if (playerID !== pipeGame.playerID) return;
-            console.log('onPlayerUpdated', data);
+            // console.log('onPlayerUpdated', data);
 
             this.playerPhones[playerID].mode = mode;
             this.playerPhones[playerID].updateBG();
