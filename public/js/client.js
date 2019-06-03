@@ -88,9 +88,10 @@ $(function () {
             pipeGame.scoreUpdated.dispatch(playerID, addition, totalScore);
 
         });
-        socket.on('gameIsOver', function () {
-            console.log('socket gameIsOver');
-            pipeGame.gameIsOver.dispatch();
+        socket.on('gameIsOver', function (finalScore, map) {
+            console.log('socket gameIsOver', finalScore, map);
+            pipeGame.map = map;
+            pipeGame.gameIsOver.dispatch(finalScore);
         });
     }
 
@@ -576,7 +577,7 @@ $(function () {
             // pipeGame.playerJoined.add((...params) => this.onPlayerAdded(...params));
             pipeGame.playerUpdated.add((...params) => this.onPlayerUpdated(...params));
             pipeGame.scoreUpdated.add((...params) => this.onScoreUpdated(...params));
-            pipeGame.gameIsOver.add((...params) => this.onGameIsOver());
+            pipeGame.gameIsOver.add((finalScore) => this.onGameIsOver(finalScore));
 
 
             this.debugText = null;
@@ -798,7 +799,9 @@ $(function () {
             });
         }
 
-        onGameIsOver() {
+        onGameIsOver(finalScore) {
+            // const playerPhone = this.playerPhones[pipeGame.playerID];
+            // playerPhone.drawCell(pipeGame.map[playerPhone.cellX][playerPhone.cellY]);
             this.gameOverText.visible = true;
         }
     }

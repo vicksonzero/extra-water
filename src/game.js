@@ -563,7 +563,8 @@ function Game() {
             this.scoreUpdated.dispatch(playerID, score, this.score);
         },
         gameOver() {
-            this.gameIsOver.dispatch(this.score);
+            console.log('gameOver', this.score, this.serializeMap().length);
+            this.gameIsOver.dispatch(this.score, this.serializeMap());
         },
 
         serializeMap() {

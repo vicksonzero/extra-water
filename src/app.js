@@ -45,9 +45,9 @@ function init() {
                         // console.log(playerID, addition, totalScore);
                         io.to(newRoom.id).emit('scoreUpdated', playerID, addition, totalScore);
                     });
-                    newRoom.game.gameIsOver.add(function () {
+                    newRoom.game.gameIsOver.add(function (finalScore, map) {
                         // console.log();
-                        io.to(newRoom.id).emit('gameIsOver');
+                        io.to(newRoom.id).emit('gameIsOver', finalScore, map);
                     });
 
                 },
