@@ -71,25 +71,25 @@ $(function () {
         });
 
         socket.on('playerJoined', function ({ map, playerID }) {
-            console.log('socket playerJoined', { mapL: map.length, playerID });
+            // console.log('socket playerJoined', { mapL: map.length, playerID });
 
             pipeGame.map = map;
             pipeGame.playerJoined.dispatch({ playerID });
         });
         socket.on('playerUpdated', function (data) {
-            console.log('socket playerUpdated', data);
+            // console.log('socket playerUpdated', data);
             const { map } = data;
             pipeGame.map = map;
             pipeGame.playerUpdated.dispatch(data);
 
         });
         socket.on('scoreUpdated', function (playerID, addition, totalScore) {
-            console.log('socket scoreUpdated', playerID, addition, totalScore);
+            // console.log('socket scoreUpdated', playerID, addition, totalScore);
             pipeGame.scoreUpdated.dispatch(playerID, addition, totalScore);
 
         });
         socket.on('gameIsOver', function (finalScore, map) {
-            console.log('socket gameIsOver', finalScore, map);
+            // console.log('socket gameIsOver', finalScore, map);
             pipeGame.map = map;
             pipeGame.gameIsOver.dispatch(finalScore);
         });
@@ -107,7 +107,7 @@ $(function () {
         },
         // iterateMap() ?
         playerGetCell(playerID) {
-            console.log('playerGetCell', playerID);
+            // console.log('playerGetCell', playerID);
             socket.emit("playerGetCell", playerID);
         },
         playerPickUpCell(playerID) {
@@ -118,6 +118,12 @@ $(function () {
         },
         playerRotate(playerID) {
             socket.emit("playerRotate", playerID);
+        },
+
+        onPlayerClickEdge(playerID, dirIndex) {
+            // console.log('onPlayerClickEdge', playerID, dirIndex);
+
+            socket.emit("playerClickEdge", playerID, dirIndex);
         },
 
         iterateMap(callback) {
@@ -131,6 +137,7 @@ $(function () {
         playerJoined: new signals.Signal(),
         playerUpdated: new signals.Signal(),
         scoreUpdated: new signals.Signal(),
+        mapUpdated: new signals.Signal(),
         gameIsOver: new signals.Signal(),
     };
 
@@ -523,6 +530,18 @@ $(function () {
             this.cellGraphic.updatePipeFill(cell);
         }
 
+        updateBG() {
+            this.bg.clear();
+            if (this.mode === 'cell') {
+                this.bg.fillStyle(Phaser.Display.Color.HSLToColor(0, 1, 1).color, 1);
+            } else if (this.mode === 'rotate') {
+                this.bg.fillStyle(Phaser.Display.Color.HSLToColor(0, 0, 0.8).color, 1);
+            }
+            this.bg.fillRect(-250, -250, 500, 500);
+            this.bg.strokeRect(-250, -250, 500, 500);
+        }
+
+
         toString() {
             const m = {
                 'idle': 'I',
@@ -577,6 +596,7 @@ $(function () {
             // pipeGame.playerJoined.add((...params) => this.onPlayerAdded(...params));
             pipeGame.playerUpdated.add((...params) => this.onPlayerUpdated(...params));
             pipeGame.scoreUpdated.add((...params) => this.onScoreUpdated(...params));
+            pipeGame.mapUpdated.add((...params) => this.onMapUpdated(...params));
             pipeGame.gameIsOver.add((finalScore) => this.onGameIsOver(finalScore));
 
 
@@ -594,6 +614,7 @@ $(function () {
             this.load.image('start_button', './images/kenney/onscreencontrols/Sprites/shadedLight/shadedLight42.png');
             this.load.image('button', './images/kenney/onscreencontrols/Sprites/shadedLight/shadedLight12.png');
             this.load.image('add_button', './images/kenney/onscreencontrols/Sprites/shadedLight/shadedLight18.png');
+            this.load.image('right_button', './images/kenney/onscreencontrols/Sprites/shadedLight/shadedLight16.png');
 
         }
         create() {
@@ -601,6 +622,7 @@ $(function () {
             this.mapContainer = this.add.container(0, 0).setName('mapContainer');
             this.playerContainer = this.add.container(0, 0).setName('playerContainer');
             this.uiContainer = this.add.container(0, 0).setName('uiContainer');
+            this.arrowContainer = this.add.container(0, 0).setName('arrowContainer');
             this.hudContainer = this.add.container(0, 0).setName('hudContainer');
 
             this.cameras.main.setBackgroundColor('#AAAAAA');
@@ -664,17 +686,19 @@ $(function () {
                 // console.log(x,y);
 
                 const cellGraphic = this.mapGraphics[x][y];
-                if (isFull(cell)) {
-                    cellGraphic.updatePipeFill({
-                        // pipeType: ['', '+', 'T', 'L', '|', '-'][Math.floor(Math.random() * 5)],
-                        // pipeDir: Math.floor(Math.random() * 4),
-                        inList: cell.inList,
-                        outList: cell.outList,
-                        duration: cell.duration,
-                        progress: cell.progress,
+                // if (isFull(cell)) {
+                cellGraphic.drawPipe({
+                    pipeType: cell.pipeType,
+                    pipeDir: cell.pipeDir,
+                });
+                cellGraphic.updatePipeFill({
+                    inList: cell.inList,
+                    outList: cell.outList,
+                    duration: cell.duration,
+                    progress: cell.progress,
 
-                    });
-                }
+                });
+                // }
             });
             this.updatePlayerCell();
         }
@@ -695,7 +719,7 @@ $(function () {
             this.input.on('pointerup', () => {
                 startBtn.setTint(0xFFFFFF);
             });
-            startBtn.setInteractive().on('pointerup', () => {
+            startBtn.on('pointerup', () => {
                 if (!this.isTutorial) {
                     pipeGame.startGame();
                     startBtn.setVisible(false);
@@ -711,7 +735,7 @@ $(function () {
             this.input.on('pointerup', () => {
                 addBtn.setTint(0xFFFFFF);
             });
-            addBtn.setInteractive().on('pointerup', () => {
+            addBtn.on('pointerup', () => {
                 const playerPhone = this.playerPhones[pipeGame.playerID];
                 if ((!playerPhone.cell || playerPhone.cell.x == null) || playerPhone.cell.progress >= playerPhone.cell.duration) {
                     if (playerPhone.mode === 'idle') {
@@ -722,7 +746,37 @@ $(function () {
                 }
             });
 
-            this.uiContainer.add(this.debugText = this.add.text(500, 0, 'debug_mode', { color: 'black', align: 'right' }));
+
+            //////////////////////////////////////////////////////////
+
+            const deltas = [
+                [1, 0],
+                [0, 1],
+                [-1, 0],
+                [0, -1],
+            ];
+
+            this.dirButtons = deltas.map((delta, dirIndex) => {
+
+                let dirBtn;
+                this.arrowContainer.add(dirBtn = this.add.image(250 + delta[0] * 200, 250 + delta[1] * 200, 'right_button'));
+                dirBtn.setAngle(dirIndex * 90);
+                dirBtn.setInteractive().on('pointerdown', () => {
+                    dirBtn.setTint(0xAAAAAA);
+                    pipeGame.onPlayerClickEdge(pipeGame.playerID, dirIndex);
+                });
+                this.input.on('pointerup', () => {
+                    dirBtn.setTint(0xFFFFFF);
+                });
+                // dirBtn.on('pointerup', () => {
+                // });
+            });
+            this.arrowContainer.setVisible(false);
+
+            //////////////////////////////////////////////////////////
+
+
+            this.hudContainer.add(this.debugText = this.add.text(500, 0, 'debug_mode', { color: 'black', align: 'right' }));
             this.debugText.setOrigin(1, 0);
 
             this.hudContainer.add(this.scoreText = this.add.text(20, 20, '--', { fontSize: '24px', color: 'black' }));
@@ -768,15 +822,26 @@ $(function () {
                 this.isTutorial = false;
             }
             if (playerID !== pipeGame.playerID) return;
+            console.log('onPlayerUpdated', data);
 
             this.playerPhones[playerID].mode = mode;
+            this.playerPhones[playerID].updateBG();
             this.playerPhones[playerID].fluidLevel = fluidLevel;
             if (mode !== 'idle') {
                 this.playerPhones[playerID].cell = cell;
                 this.playerPhones[playerID].drawCell(cell);
+
+                this.playerContainer.setVisible(true);
+                this.arrowContainer.setVisible(true);
             } else {
                 this.playerPhones[playerID].cell = null;
+                this.playerContainer.setVisible(false);
+                this.arrowContainer.setVisible(false);
             }
+        }
+
+        onMapUpdated({ map }) {
+
         }
 
         onScoreUpdated(playerID, addition, totalScore) {

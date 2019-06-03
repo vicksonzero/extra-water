@@ -175,7 +175,6 @@ function Game() {
                 fronts.add(cell);
             })
         }
-
         toJSON() {
             const {
                 x, y,
@@ -186,6 +185,38 @@ function Game() {
             return {
                 x, y,
                 pipeType, pipeDir,
+                duration, progress,
+                inList: inList.slice(),
+                outList: outList.slice(),
+            };
+        }
+
+        getPipeConfig() {
+            const {
+                x, y,
+                pipeType, pipeDir,
+                duration, progress,
+                inList, outList,
+            } = this;
+            return {
+                x, y,
+                pipeType, pipeDir,
+                // duration, progress,
+                // inList: inList.slice(),
+                // outList: outList.slice(),
+            };
+        }
+
+        getPipeProgress() {
+            const {
+                x, y,
+                pipeType, pipeDir,
+                duration, progress,
+                inList, outList,
+            } = this;
+            return {
+                // x, y,
+                // pipeType, pipeDir,
                 duration, progress,
                 inList: inList.slice(),
                 outList: outList.slice(),
@@ -236,23 +267,24 @@ function Game() {
         fluidDuration: 5000,
         last: 0,
 
-        ups: 10,
+        ups: 5,
         players: [],
         samplePlayer: new Player(-1, {
             fluidTable: [
-                { count: 0, duration: 5000 },
-                { count: 2, duration: 4000 },
-                { count: 6, duration: 3000 },
-                { count: 10, duration: 2000 },
-                { count: 15, duration: 1500 },
-                { count: 20, duration: 1000 },
-                { count: 30, duration: 500 },
+                { count: 0, duration: 7000 },
+                { count: 2, duration: 5000 },
+                { count: 6, duration: 4500 },
+                { count: 10, duration: 4000 },
+                { count: 15, duration: 3000 },
+                { count: 20, duration: 2000 },
+                { count: 30, duration: 1000 },
             ],
         }),
-        connectCommand: { leftCell: null, leftOut: null, rightCell: null, rightIn: null },
+        connectCommand: { leftPlayer: null, leftOut: null, rightPlayer: null, rightIn: null },
         playerJoined: new Signal(),
         playerUpdated: new Signal(),
         scoreUpdated: new Signal(),
+        mapUpdated: new Signal(),
         gameIsOver: new Signal(),
 
         score: 0,
@@ -292,11 +324,20 @@ function Game() {
             // cell.pipeDir = Math.floor(Math.random() * 4);
             // cell.activatePipe(Math.floor(0.4 * this.fluidDuration), this.fluidDuration, []);
             // cell.updateOutList();
+            setTimeout(() => this.sendState(), 1000 / this.ups);
         },
 
         startGame() {
             this.last = Date.now();
             setTimeout(() => this.updateFluid(), 1000 / this.ups);
+        },
+
+        sendState() {
+            if (this.players.length > 0) {
+                this.dispatchPlayerChange();
+            }
+
+            setTimeout(() => this.sendState(), 1000 / this.ups);
         },
 
         updateFluid() {
@@ -336,7 +377,7 @@ function Game() {
                 }
             })
 
-            this.dispatchPlayerChange();
+            // this.dispatchPlayerChange();
 
             if (this.fronts.size > 0) {
                 this.last = Date.now();
@@ -374,6 +415,7 @@ function Game() {
         },
 
         dispatchPlayerChange() {
+            const map = this.serializeMap();
             this.players.forEach((player) => {
                 if (player.mode === 'cell') {
                     const cell = this.map[player.cellX][player.cellY];
@@ -384,7 +426,7 @@ function Game() {
                         fluidLevel: player.fluidLevel,
                         mode: player.mode,
                         score: this.score,
-                        map: this.serializeMap(),
+                        map: map,
                         cell: {
                             x: cell.x,
                             y: cell.y,
@@ -405,7 +447,7 @@ function Game() {
                         fluidLevel: player.fluidLevel,
                         mode: player.mode,
                         score: this.score,
-                        map: this.serializeMap(),
+                        map: map,
                         cell: {
                             x: cell.x,
                             y: cell.y,
@@ -426,7 +468,7 @@ function Game() {
                         fluidLevel: player.fluidLevel,
                         mode: player.mode,
                         score: this.score,
-                        map: this.serializeMap(),
+                        map: map,
                         // cell: {
                         //     x: cell.x,
                         //     y: cell.y,
@@ -439,6 +481,13 @@ function Game() {
                         // },
                     });
                 }
+            });
+        },
+
+        dispatchMapChange() {
+            const map = this.map.map((col, x) => col.map((cell, y) => cell.getPipeConfig()));
+            this.mapUpdated.dispatch({
+                map,
             });
         },
 
@@ -459,32 +508,83 @@ function Game() {
             if (!player) throw new Error('playerPutCell: player not found: ' + playerID);
 
             player.updateFluidDuration();
-            console.log('playerPutCell', playerID, cell, cellX, cellY, player.fluidDuration);
+            // console.log('playerPutCell', playerID, cell.getPipeConfig(), cellX, cellY, player.fluidDuration);
             const currentCell = this.map[cellX][cellY];
             if (currentCell.progress <= 0 || currentCell.duration < 0) {
                 this.addCell(cellX, cellY, cell.pipeType, cell.pipeDir, player.fluidDuration);
                 player.cellX = cellX;
                 player.cellY = cellY;
                 player.mode = 'cell';
-                this.dispatchPlayerChange();
+                // this.dispatchPlayerChange();
             } else {
                 console.log('playerPutCell: existing cell');
 
                 player.mode = 'cell';
-                this.dispatchPlayerChange();
+                // this.dispatchPlayerChange();
 
             }
         },
 
         onPlayerClickEdge(playerID, edgeDir) {
             // edgeDir = 0,1,2,3 (0=right, 1=bottom)
-            if (this.connectCommand.leftCell == null) {
+            const player = this.players[playerID];
+            const cell = player.cell;
+            if (this.connectCommand.leftPlayer == null) {
+                this.connectCommand.leftPlayer = player;
+                this.connectCommand.leftOut = edgeDir;
+            } else if (this.connectCommand.leftPlayer === player) {
+                this.connectCommand.leftPlayer = null;
+                this.connectCommand.leftOut = null;
+            } else if (this.connectCommand.rightPlayer == null) {
+                if (this.connectCommand.leftPlayer.mode === 'cell' || player.mode === 'cell') {
+                    this.connectCommand.rightPlayer = player;
+                    this.connectCommand.rightIn = edgeDir;
 
-            } else if (this.connectCommand.rightCell == null) {
-
+                    this.connectCellsByEdge(this.connectCommand);
+                    this.connectCommand.leftPlayer = null;
+                    this.connectCommand.leftOut = null;
+                    this.connectCommand.rightPlayer = null;
+                    this.connectCommand.rightIn = null;
+                } else {
+                    this.connectCommand.leftPlayer = null;
+                    this.connectCommand.leftOut = null;
+                }
             } else {
-
+                // nothing
             }
+            // this.dispatchPlayerChange();
+        },
+        connectCellsByEdge(connectCommand) {
+            const realLeft = connectCommand.leftPlayer.mode === 'cell' ? connectCommand.leftPlayer : connectCommand.rightPlayer;
+            const realLeftDir = connectCommand.leftPlayer.mode === 'cell' ? connectCommand.leftOut : connectCommand.rightIn;
+            const realRight = connectCommand.leftPlayer.mode === 'cell' ? connectCommand.rightPlayer : connectCommand.leftPlayer;
+            const realRightDir = connectCommand.leftPlayer.mode === 'cell' ? connectCommand.rightIn : connectCommand.leftOut;
+
+            const targetDir = realLeftDir; // direction in world space
+            // console.log('targetDir: ' + targetDir);
+
+            // rotate right until matchine
+            let rightPointingAt = realRightDir;
+            while (rightPointingAt != ((targetDir + 2) % 4)) {
+                realRight.cell.pipeDir += 1;
+                realRight.cell.pipeDir %= 4;
+                rightPointingAt += 1;
+                rightPointingAt %= 4;
+            }
+            // console.log('realRight.pipeDir: ' + realRight.cell.pipeDir);
+            const deltas = [
+                [1, 0],
+                [0, 1],
+                [-1, 0],
+                [0, -1],
+            ];
+
+            this.playerPutCell({
+                playerID: realRight.playerID,
+                cell: realRight.cell,
+                cellX: realLeft.cellX + deltas[targetDir][0],
+                cellY: realLeft.cellY + deltas[targetDir][1],
+            });
         },
         playerPickUpCell(playerID) {
             const player = this.players[playerID];
@@ -495,7 +595,7 @@ function Game() {
             if (!cell) throw new Error('playerPickUpCell: cell not found: ' + player.cellX + ',' + player.cellY);
 
 
-            console.log('playerPickUpCell', playerID, player.mode, cell.isFull());
+            // console.log('playerPickUpCell', playerID, player.mode, cell.isFull());
 
             if (player.mode === 'cell') {
                 if (cell.isFull()) {
@@ -510,7 +610,7 @@ function Game() {
             const player = this.players[playerID];
             if (!player) throw new Error('playerGetCell: player not found: ' + playerID);
 
-            console.log('playerGetCell', playerID);
+            console.log('playerGetCell', playerID, player.mode);
 
             if (player.mode === 'idle') {
                 if (this.fronts.size <= 0) {
@@ -521,7 +621,7 @@ function Game() {
                     }));
                     player.mode = 'rotate';
                     this.playerPutCell({ playerID, cell: player.cell, cellX: 12, cellY: 12 });
-                    this.dispatchPlayerChange();
+                    // this.dispatchPlayerChange();
                 } else {
                     player.setCell(new Cell({
                         pipeGame: this,
@@ -529,7 +629,9 @@ function Game() {
                         pipeDir: Math.floor(Math.random() * 4),
                     }));
                     player.mode = 'rotate';
-                    this.dispatchPlayerChange();
+                    // console.log('playerGetCell', playerID, player.cell.pipeType, player.cell.pipeDir);
+
+                    // this.dispatchPlayerChange();
                 }
             }
         },
@@ -537,12 +639,12 @@ function Game() {
         playerRotate(playerID) {
             const player = this.players[playerID];
             if (!player) throw new Error('playerGetCell: player not found: ' + playerID);
-            console.log('playerRotate', playerID);
+            // console.log('playerRotate', playerID);
 
             if (player.mode === 'rotate') {
                 player.cell.pipeDir += 1;
                 player.cell.pipeDir %= 4;
-                this.dispatchPlayerChange();
+                // this.dispatchPlayerChange();
             }
         },
 

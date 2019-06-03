@@ -41,6 +41,10 @@ function init() {
                         // console.log(data);
                         io.to(newRoom.id).emit('playerUpdated', data);
                     });
+                    newRoom.game.mapUpdated.add(function (data) {
+                        // console.log(data);
+                        io.to(newRoom.id).emit('mapUpdated', data);
+                    });
                     newRoom.game.scoreUpdated.add(function (playerID, addition, totalScore) {
                         // console.log(playerID, addition, totalScore);
                         io.to(newRoom.id).emit('scoreUpdated', playerID, addition, totalScore);
@@ -195,17 +199,22 @@ function init() {
             room.game.playerGetCell(playerID);
         });
         socket.on("playerPickUpCell", function (playerID) {
-            console.log('playerPickUpCell', playerID);
+            // console.log('playerPickUpCell', playerID);
             room.game.playerPickUpCell(playerID);
         });
         socket.on("playerPutCell", function ({ playerID, cell, cellX, cellY }) {
-            console.log('playerPutCell', { playerID, cell, cellX, cellY });
+            // console.log('playerPutCell', { playerID, cell, cellX, cellY });
             room.game.playerPutCell({ playerID, cell, cellX, cellY });
         });
         socket.on("playerRotate", function (playerID) {
-            console.log('playerRotate', playerID);
+            // console.log('playerRotate', playerID);
             room.game.playerRotate(playerID);
         });
+        socket.on("playerClickEdge", function (playerID, edgeDir) {
+            console.log('playerClickEdge', playerID, edgeDir);
+            room.game.onPlayerClickEdge(playerID, edgeDir);
+        });
+
 
         socket.join(room.id);
 
